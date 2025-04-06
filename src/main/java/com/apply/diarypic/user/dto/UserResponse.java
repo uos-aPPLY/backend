@@ -1,4 +1,34 @@
 package com.apply.diarypic.user.dto;
 
+import lombok.Builder;
+import lombok.Getter;
+
+import java.time.LocalTime;
+
+@Getter
+@Builder
 public class UserResponse {
+    private Long id;
+    private String snsProvider;
+    private String snsUserId;
+    private String nickname;
+    private String profileImageUrl;
+    private String writingStylePrompt;
+    private Boolean alarmEnabled;
+    private LocalTime alarmTime;
+    private Boolean alarmRandom;
+
+    public static UserResponse from(com.apply.diarypic.user.entity.User user) {
+        return UserResponse.builder()
+                .id(user.getId())
+                .snsProvider(user.getSnsProvider())
+                .snsUserId(user.getSnsUserId())
+                .nickname(user.getNickname())
+                .profileImageUrl(user.getProfileImageUrl())
+                .writingStylePrompt(user.getWritingStylePrompt())
+                .alarmEnabled(user.getAlarmEnabled())
+                .alarmTime(user.getAlarmTime())
+                .alarmRandom(user.getAlarmRandom())
+                .build();
+    }
 }

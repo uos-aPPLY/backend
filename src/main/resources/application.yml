@@ -1,4 +1,7 @@
 spring:
+#  config:
+#    import: classpath:application-secret.yml
+
   datasource:
     url: jdbc:mysql://localhost:3306/diarypic_db?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
     username: root
@@ -34,10 +37,19 @@ spring:
     serialization:
       fail-on-empty-beans: false
 
+  cloud:
+    aws:
+      region:
+        static: ap-northeast-2
+      s3:
+        bucket: diarypic-photo
+      credentials:
+        access-key: AKIAS6J7P6TMXVX3TK5W
+        secret-key: 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
+
 jwt:
   secret: my-secret-key-which-is-very-secret-and-long-enough123456
   expiration-ms: 3600000
-
 
 server:
   port: 8080

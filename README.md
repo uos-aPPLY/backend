@@ -22,6 +22,7 @@ docker-compose up --build
 
 - 백엔드 서버: [http://localhost:8080](http://localhost:8080)
 - Swagger 문서: [http://localhost:8080/swagger-ui/index.html](http://localhost:8080/swagger-ui/index.html)
+- 카카오 로그인: [http://localhost:8080/oauth2/authorization/kakao](http://localhost:8080/oauth2/authorization/kakao)
 
 ### 🐳 Docker Desktop에서 실행
 

@@ -17,7 +17,7 @@ build/
 logs/
 *.log
 .env
-application-*.yml
+application-secret.yml
 application-*.properties
 
 # ----------------------------------------

@@ -9,7 +9,8 @@
 
 ```bash
 git clone https://github.com/uos-aPPLY/backend.git
-cd DiaryPicApplication
+cd backend
+cd docker
 ```
 
 ## 🚀 실행 방법

@@ -10,6 +10,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalTime;
+
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
@@ -40,11 +42,12 @@ public class UserSettingsController {
     @PatchMapping("/alarm")
     public ResponseEntity<UserResponse> updateAlarm(@AuthenticationPrincipal UserPrincipal userPrincipal,
                                                     @RequestBody @Valid UpdateAlarmRequest request) {
+        LocalTime alarmTime = LocalTime.of(request.getHour(), request.getMinute());
+
         User user = userService.updateAlarm(
                 userPrincipal.getUserId(),
                 request.getEnabled(),
-                request.getAlarmTime(),
-                request.getRandom()
+                alarmTime
         );
         return ResponseEntity.ok(UserResponse.from(user));
     }

@@ -12,11 +12,9 @@ public class UserResponse {
     private String snsProvider;
     private String snsUserId;
     private String nickname;
-    private String profileImageUrl;
     private String writingStylePrompt;
     private Boolean alarmEnabled;
     private LocalTime alarmTime;
-    private Boolean alarmRandom;
 
     public static UserResponse from(com.apply.diarypic.user.entity.User user) {
         return UserResponse.builder()
@@ -24,11 +22,9 @@ public class UserResponse {
                 .snsProvider(user.getSnsProvider())
                 .snsUserId(user.getSnsUserId())
                 .nickname(user.getNickname())
-                .profileImageUrl(user.getProfileImageUrl())
                 .writingStylePrompt(user.getWritingStylePrompt())
                 .alarmEnabled(user.getAlarmEnabled())
                 .alarmTime(user.getAlarmTime())
-                .alarmRandom(user.getAlarmRandom())
                 .build();
     }
 }

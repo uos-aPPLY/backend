@@ -25,9 +25,6 @@ public class User {
     @Setter
     private String nickname;
 
-    @Setter
-    private String profileImageUrl;
-
     @Lob
     @Setter
     private String writingStylePrompt;
@@ -37,9 +34,6 @@ public class User {
 
     @Setter
     private LocalTime alarmTime;
-
-    @Setter
-    private Boolean alarmRandom;
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

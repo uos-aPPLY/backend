@@ -1,0 +1,46 @@
+version: "3.8"
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: diarypic-mysql
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "13306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+    networks: [diarypic-net]
+
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: diarypic-backend
+    depends_on:
+      db:
+        condition: service_healthy # DB가 준비된 후 시작
+    ports:
+      - "8080:8080"
+    env_file: # backend 서비스가 사용할 환경 변수 파일을 지정
+      - .env
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    restart: unless-stopped
+    networks: [diarypic-net]
+
+networks:
+  diarypic-net:
+    driver: bridge
+
+volumes:
+  mysql_data:
+    driver: local

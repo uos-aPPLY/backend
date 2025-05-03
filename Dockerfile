@@ -1,6 +1,13 @@
-FROM eclipse-temurin:17-jdk-alpine
+# --- 1단계: 빌드 ----------------------------------------------------
+FROM gradle:8.6.0-jdk17-alpine AS builder
+WORKDIR /workspace
+COPY --chown=gradle:gradle . .
+RUN gradle clean bootJar --no-daemon
 
-VOLUME /tmp
-COPY build/libs/*.jar app.jar
+# --- 2단계: 런타임 --------------------------------------------------
+FROM amazoncorretto:17-alpine
+WORKDIR /app
+COPY --from=builder /workspace/build/libs/*.jar app.jar
 
-ENTRYPOINT ["java", "-jar", "/app.jar", "--spring.profiles.active=docker"]
+EXPOSE 8080
+ENTRYPOINT ["java","-jar","/app/app.jar"]

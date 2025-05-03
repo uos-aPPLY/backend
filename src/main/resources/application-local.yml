@@ -25,8 +25,8 @@ spring:
       s3:
         bucket: diarypic-photo
       credentials:
-        access-key: ${AWS_ACCESS_KEY}
-        secret-key: ${AWS_SECRET_KEY}
+        access-key: AKIAS6J7P6TMXVX3TK5W
+        secret-key: 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
 
   security:
     oauth2:

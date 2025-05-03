@@ -34,11 +34,10 @@ public class UserService {
     }
 
     @Transactional
-    public User updateAlarm(Long userId, Boolean enabled, LocalTime alarmTime, Boolean random) {
+    public User updateAlarm(Long userId, Boolean enabled, LocalTime alarmTime) {
         User user = getUserById(userId);
         user.setAlarmEnabled(enabled);
         user.setAlarmTime(alarmTime);
-        user.setAlarmRandom(random);
         return user;
     }
 

@@ -43,7 +43,6 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
                     .snsUserId(snsUserId)
                     .writingStylePrompt("기본 말투입니다.")
                     .alarmEnabled(false)
-                    .alarmRandom(false)
                     .build();
 
             userRepository.save(newUser);

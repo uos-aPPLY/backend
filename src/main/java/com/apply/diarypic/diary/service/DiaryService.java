@@ -11,13 +11,18 @@ import com.apply.diarypic.photo.repository.PhotoRepository;
 import com.apply.diarypic.user.entity.User;
 import com.apply.diarypic.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class DiaryService {
@@ -26,46 +31,42 @@ public class DiaryService {
     private final UserRepository userRepository;
     private final PhotoRepository photoRepository;
     private final AiDiaryService aiDiaryService;
-    private S3Uploader s3Uploader;
+    private final S3Uploader s3Uploader;
 
     @Transactional
     public DiaryResponse createDiary(DiaryRequest request, Long userId) {
-        // 사용자 조회
+        // 1) 사용자 조회
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
 
-        // DiaryRequest의 사진 정보를 DiaryPhoto 엔티티로 매핑
-        List<DiaryPhoto> diaryPhotos = request.getPhotos().stream()
-                .map(photoDto -> DiaryPhoto.builder()
-                        .photoUrl(photoDto.getPhotoUrl())
-                        .shootingDate(photoDto.getShootingDate())
-                        .location(photoDto.getLocation())
-                        .isRecommended(photoDto.getIsRecommended())
-                        .sequence(photoDto.getSequence())
-                        .userId(userId)
-                        .createdAt(LocalDateTime.now())
-                        .build())
-                .collect(Collectors.toList());
+        // 2) photoIds로 DB에서 DiaryPhoto 엔티티 조회
+        List<DiaryPhoto> photos = photoRepository.findAllById(request.getPhotoIds());
+        if (photos.size() != request.getPhotoIds().size()) {
+            throw new IllegalArgumentException("유효하지 않은 photoId가 포함되어 있습니다.");
+        }
 
-        // Diary 엔티티 생성 (Cascade 옵션으로 DiaryPhoto도 함께 저장)
+        // 3) sequence 설정 및 일기 연관
+        for (int i = 0; i < photos.size(); i++) {
+            photos.get(i).setSequence(i + 1);
+        }
+
+        // 4) Diary 엔티티 생성
         Diary diary = Diary.builder()
                 .user(user)
                 .title(request.getTitle())
                 .content(request.getContent())
                 .emotionIcon(request.getEmotionIcon())
-                .isFavorited(false)
-                .status("미확인")
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
-                .diaryPhotos(diaryPhotos)
+                .diaryPhotos(photos)
                 .build();
 
-        // DiaryPhoto와 Diary의 양방향 연관관계 설정
-        diaryPhotos.forEach(photo -> photo.setDiary(diary));
+        // 양방향 연관관계 설정
+        photos.forEach(photo -> photo.setDiary(diary));
 
-        Diary savedDiary = diaryRepository.save(diary);
-
-        return DiaryResponse.from(savedDiary);
+        // 5) 저장 및 응답
+        Diary saved = diaryRepository.save(diary);
+        return DiaryResponse.from(saved);
     }
 
     /**
@@ -77,37 +78,46 @@ public class DiaryService {
      */
     @Transactional
     public DiaryResponse createDiaryAuto(DiaryAutoRequest request, Long userId) {
-        // 사용자 조회
+        // 1) 사용자 조회
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
 
-        // 전달받은 photoIds로 DB에서 최종 선택된 DiaryPhoto 조회
+        // 2) photoIds로 DB에서 최종 선택된 DiaryPhoto 조회
         List<DiaryPhoto> diaryPhotos = photoRepository.findAllById(request.getPhotoIds())
                 .stream()
-                // 해당 사용자가 업로드했고, 아직 Diary에 연결되지 않은 사진만 필터링
                 .filter(photo -> photo.getUserId().equals(userId) && photo.getDiary() == null)
-                .collect(Collectors.toList());
+                .toList();
 
-        if(diaryPhotos.isEmpty()) {
+        if (diaryPhotos.isEmpty()) {
             throw new IllegalArgumentException("최종 선택된 사진이 없습니다.");
         }
 
-        // 중복된 사진 제거 (URL 기준)
+        // 3) 중복 제거 (photoUrl 기준) + 순서 보존
         List<DiaryPhoto> distinctDiaryPhotos = diaryPhotos.stream()
                 .collect(Collectors.collectingAndThen(
-                        Collectors.toMap(DiaryPhoto::getPhotoUrl, photo -> photo, (existing, replacement) -> existing),
-                        map -> map.values().stream().collect(Collectors.toList())
+                        Collectors.toMap(
+                                DiaryPhoto::getPhotoUrl,
+                                Function.identity(),
+                                (existing, replacement) -> existing,
+                                LinkedHashMap::new
+                        ),
+                        m -> new ArrayList<>(m.values())
                 ));
 
-        // 최종 사진 URL 리스트 생성
+        // 4) sequence 필드 설정
+        for (int i = 0; i < distinctDiaryPhotos.size(); i++) {
+            distinctDiaryPhotos.get(i).setSequence(i + 1);
+        }
+
+        // 5) AI 서버에 전달할 URL 리스트 생성
         List<String> photoUrls = distinctDiaryPhotos.stream()
                 .map(DiaryPhoto::getPhotoUrl)
                 .collect(Collectors.toList());
 
-        // AI 서버를 호출해 자동 생성된 일기 내용을 받아옴
+        // 6) AI 서버 호출하여 자동 생성된 일기 내용 받아오기
         String autoContent = aiDiaryService.generateDiaryContent(photoUrls);
 
-        // Diary 엔티티 생성. (타이틀은 고정 혹은 AI에서 별도로 제공 가능)
+        // 7) Diary 엔티티 생성 (연관된 DiaryPhoto 재사용)
         Diary diary = Diary.builder()
                 .user(user)
                 .title("자동 생성 일기")
@@ -117,12 +127,13 @@ public class DiaryService {
                 .status("미확인")
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
-                .diaryPhotos(distinctDiaryPhotos) // 이미 DB에 저장된 DiaryPhoto를 재사용
+                .diaryPhotos(distinctDiaryPhotos)
                 .build();
 
-        // 각 DiaryPhoto에 Diary 연관관계 설정
+        // 8) 양방향 연관관계 설정
         distinctDiaryPhotos.forEach(photo -> photo.setDiary(diary));
 
+        // 9) 저장 및 응답
         Diary savedDiary = diaryRepository.save(diary);
         return DiaryResponse.from(savedDiary);
     }
@@ -139,7 +150,8 @@ public class DiaryService {
             try {
                 s3Uploader.delete(photo.getPhotoUrl());
             } catch (Exception e) {
-                // 로그 남기고 계속
+                // 로그만 남기고 계속 진행
+                log.error("S3 사진 삭제 실패: {}", photo.getPhotoUrl(), e);
             }
         });
         diaryRepository.delete(diary);

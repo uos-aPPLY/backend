@@ -95,9 +95,9 @@ public class PhotoSelectionService {
     public void deletePhoto(Long userId, Long photoId) {
         DiaryPhoto photo = photoRepository.findById(photoId)
                 .orElseThrow(() -> new IllegalArgumentException("해당 사진이 존재하지 않습니다."));
-        if (photo.getDiary() != null) {
-            throw new IllegalArgumentException("이미 일기에 등록된 사진은 삭제할 수 없습니다.");
-        }
+//        if (photo.getDiary() != null) {
+//            throw new IllegalArgumentException("이미 일기에 등록된 사진은 삭제할 수 없습니다.");
+//        }
         if (!photo.getUserId().equals(userId)) {
             throw new IllegalArgumentException("해당 사진에 대한 삭제 권한이 없습니다.");
         }

@@ -1,5 +1,5 @@
 # --- 1단계: 빌드 ----------------------------------------------------
-FROM gradle:8.6.0-jdk17-alpine AS builder
+FROM gradle:8.6.0-jdk17 AS builder
 WORKDIR /workspace
 COPY --chown=gradle:gradle . .
 RUN gradle clean bootJar --no-daemon

@@ -33,4 +33,12 @@ public class DiaryController {
         DiaryResponse response = diaryService.createDiaryAuto(diaryAutoRequest, userPrincipal.getUserId());
         return ResponseEntity.ok(response);
     }
+
+    @DeleteMapping("/{diaryId}")
+    public ResponseEntity<Void> deleteDiary(@CurrentUser UserPrincipal userPrincipal,
+                                            @PathVariable Long diaryId) {
+        diaryService.deleteDiary(userPrincipal.getUserId(), diaryId);
+        return ResponseEntity.noContent().build();
+    }
+
 }

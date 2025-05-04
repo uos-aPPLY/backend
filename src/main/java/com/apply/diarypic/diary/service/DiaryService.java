@@ -6,6 +6,7 @@ import com.apply.diarypic.diary.dto.DiaryResponse;
 import com.apply.diarypic.diary.entity.Diary;
 import com.apply.diarypic.diary.entity.DiaryPhoto;
 import com.apply.diarypic.diary.repository.DiaryRepository;
+import com.apply.diarypic.global.s3.S3Uploader;
 import com.apply.diarypic.photo.repository.PhotoRepository;
 import com.apply.diarypic.user.entity.User;
 import com.apply.diarypic.user.repository.UserRepository;
@@ -25,6 +26,7 @@ public class DiaryService {
     private final UserRepository userRepository;
     private final PhotoRepository photoRepository;
     private final AiDiaryService aiDiaryService;
+    private S3Uploader s3Uploader;
 
     @Transactional
     public DiaryResponse createDiary(DiaryRequest request, Long userId) {
@@ -123,5 +125,23 @@ public class DiaryService {
 
         Diary savedDiary = diaryRepository.save(diary);
         return DiaryResponse.from(savedDiary);
+    }
+
+    @Transactional
+    public void deleteDiary(Long userId, Long diaryId) {
+        Diary diary = diaryRepository.findById(diaryId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 일기를 찾을 수 없습니다."));
+        if (!diary.getUser().getId().equals(userId)) {
+            throw new IllegalArgumentException("해당 일기에 대한 삭제 권한이 없습니다.");
+        }
+        // 연관된 사진 S3에서 삭제
+        diary.getDiaryPhotos().forEach(photo -> {
+            try {
+                s3Uploader.delete(photo.getPhotoUrl());
+            } catch (Exception e) {
+                // 로그 남기고 계속
+            }
+        });
+        diaryRepository.delete(diary);
     }
 }

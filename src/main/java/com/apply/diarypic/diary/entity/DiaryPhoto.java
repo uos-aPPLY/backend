@@ -3,7 +3,6 @@ package com.apply.diarypic.diary.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
-import java.time.LocalDate;
 
 @Entity
 @Table(name = "diary_photos")
@@ -21,11 +20,14 @@ public class DiaryPhoto {
     @Column(nullable = false)
     private String photoUrl;
 
-    // 촬영일 (날짜만 필요할 경우)
+    // 촬영시간
     private LocalDateTime shootingDateTime;
 
     // 촬영 장소 정보
     private String location;
+
+    @Column(name = "detailed_address")
+    private String detailedAddress;
 
     // AI 추천 사진 여부
     private Boolean isRecommended;

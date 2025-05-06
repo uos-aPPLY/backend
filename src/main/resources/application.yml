@@ -72,7 +72,8 @@ spring:
 google:
   maps:
     api:
-      key:
+      key: ${GOOGLE_MAPS_API_KEY}
+
 # 공통 JWT 설정
 jwt:
   secret: ${JWT_SECRET}

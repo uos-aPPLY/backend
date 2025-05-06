@@ -11,6 +11,7 @@ public class PhotoResponse {
     private String photoUrl;
     private LocalDateTime shootingDateTime;
     private String location;
+    private String detailedAddress;
     private Boolean isRecommended;
     private Integer sequence;
     private LocalDateTime createdAt;
@@ -21,6 +22,7 @@ public class PhotoResponse {
         response.setPhotoUrl(diaryPhoto.getPhotoUrl());
         response.setShootingDateTime(diaryPhoto.getShootingDateTime());
         response.setLocation(diaryPhoto.getLocation());
+        response.setDetailedAddress(diaryPhoto.getDetailedAddress());
         response.setIsRecommended(diaryPhoto.getIsRecommended());
         response.setSequence(diaryPhoto.getSequence());
         response.setCreatedAt(diaryPhoto.getCreatedAt());

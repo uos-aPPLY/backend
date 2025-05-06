@@ -12,8 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
 
 @Slf4j
 @Service
@@ -33,57 +31,54 @@ public class AuthService {
             default -> throw new IllegalArgumentException("지원하지 않는 provider: " + req.provider());
         };
 
-        // 2. 사용자 고유 ID 및 닉네임(선택적) 추출
+        // 2. 사용자 고유 ID 및 소셜 프로필 닉네임 추출
         String snsUserId = switch (req.provider().toLowerCase()) {
             case "kakao" -> String.valueOf(userInfoMap.get("id"));
             case "google" -> (String) userInfoMap.get("sub");
-            default -> throw new IllegalStateException("Provider 처리 오류"); // 발생하면 안됨
+            default -> throw new IllegalStateException("Provider 처리 오류");
         };
 
-        String nickname = null; // 닉네임 초기화
+        String socialNickname = null; // 소셜 플랫폼에서 가져온 닉네임
         if ("kakao".equalsIgnoreCase(req.provider())) {
             Map<String, Object> properties = (Map<String, Object>) userInfoMap.get("properties");
             if (properties != null) {
-                nickname = (String) properties.get("nickname");
+                socialNickname = (String) properties.get("nickname");
             }
         } else if ("google".equalsIgnoreCase(req.provider())) {
-            nickname = (String) userInfoMap.get("name");
-        }
-        // 닉네임이 없으면 기본값 생성
-        if (nickname == null || nickname.isBlank()) {
-            nickname = req.provider() + "_" + snsUserId.substring(0, Math.min(snsUserId.length(), 6));
+            socialNickname = (String) userInfoMap.get("name");
         }
 
+        // 소셜 닉네임이 없거나 비어있으면 기본값 생성
+        if (socialNickname == null || socialNickname.isBlank()) {
+            socialNickname = req.provider() + "_" + snsUserId.substring(0, Math.min(snsUserId.length(), 6));
+        }
 
         // 3. DB에서 사용자 조회 또는 생성
-        final String finalNickname = nickname; // 람다에서 사용하기 위해 final 변수로
-        User user = userRepository.findBySnsProviderAndSnsUserId(req.provider(), snsUserId)
+        final String finalProvider = req.provider();
+        final String finalSnsUserId = snsUserId;
+        final String finalSocialNicknameForNewUser = socialNickname;
+
+        User user = userRepository.findBySnsProviderAndSnsUserId(finalProvider, finalSnsUserId)
                 .orElseGet(() -> {
-                    log.info("✅ 신규 사용자 등록 시도: provider={}, snsUserId={}, nickname={}", req.provider(), snsUserId, finalNickname);
+                    log.info("✅ 신규 사용자 등록 시도: provider={}, snsUserId={}, nickname={}",
+                            finalProvider, finalSnsUserId, finalSocialNicknameForNewUser);
                     User newUser = User.builder()
-                            .snsProvider(req.provider())
-                            .snsUserId(snsUserId)
-                            .nickname(finalNickname) // 소셜 플랫폼 닉네임 또는 기본값
+                            .snsProvider(finalProvider)
+                            .snsUserId(finalSnsUserId)
+                            .nickname(finalSocialNicknameForNewUser)
                             .writingStylePrompt("기본 말투입니다.") // 기본값 설정
                             .alarmEnabled(false) // 기본값 설정
                             .build();
                     return userRepository.save(newUser);
                 });
 
-        if (!Objects.equals(user.getNickname(), finalNickname)) {
-            // 현재 닉네임과 finalNickname이 다를 경우 (어느 한쪽이 null이거나, 둘 다 값이 있는데 다른 경우)
-            log.info("🔄 사용자 닉네임 업데이트: userId={}, oldNickname={}, newNickname={}",
-                    user.getId(), user.getNickname(), finalNickname);
-            user.setNickname(finalNickname);
-        }
-
-
-        log.info("👤 사용자 인증 성공: userId={}, provider={}, snsUserId={}", user.getId(), req.provider(), snsUserId);
+        log.info("👤 사용자 인증 성공: userId={}, provider={}, snsUserId={}, nickname={}",
+                user.getId(), user.getSnsProvider(), user.getSnsUserId(), user.getNickname());
 
         // 4. 자체 Access Token 생성
         String appAccessToken = jwtUtils.generateAccessToken(user.getId());
 
-        // 5. 응답 DTO 생성 (UserInfoResponse 사용)
+        // 5. 응답 DTO 생성
         UserInfoResponse userInfoDto = new UserInfoResponse(user.getId(), user.getNickname());
         return new AuthResponse(appAccessToken, jwtUtils.getAccessTokenExpiresIn(), userInfoDto);
     }

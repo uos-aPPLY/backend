@@ -1,6 +1,6 @@
 package com.apply.diarypic.global.security;
 
-import com.apply.diarypic.global.security.jwt.JwtProvider;
+import com.apply.diarypic.global.security.jwt.JwtUtils;
 import com.apply.diarypic.user.entity.User;
 import com.apply.diarypic.user.repository.UserRepository;
 import jakarta.servlet.ServletException;
@@ -19,7 +19,7 @@ import java.io.IOException;
 @RequiredArgsConstructor
 public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler {
 
-    private final JwtProvider jwtProvider;
+    private final JwtUtils jwtUtils;
     private final UserRepository userRepository;
 
     @Override
@@ -34,7 +34,7 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
                 .orElseThrow(() -> new IllegalArgumentException("⛔ 로그인된 유저를 찾을 수 없습니다."));
 
         UserPrincipal userPrincipal = new UserPrincipal(user.getId(), user.getSnsProvider());
-        String accessToken = jwtProvider.createToken(userPrincipal);
+        String accessToken = jwtUtils.generateAccessToken(userPrincipal.getUserId());
 
         response.setContentType("application/json;charset=UTF-8");
         response.getWriter().write("{\"accessToken\": \"" + accessToken + "\"}");

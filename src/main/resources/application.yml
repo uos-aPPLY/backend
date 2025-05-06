@@ -1,6 +1,6 @@
 spring:
   profiles:
-    active: local # local or docker
+    active: docker # local or docker
   jackson:
     serialization:
       fail-on-empty-beans: false

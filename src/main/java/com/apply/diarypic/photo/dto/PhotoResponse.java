@@ -1,4 +1,4 @@
-package com.apply.diarypic.diary.dto;
+package com.apply.diarypic.photo.dto;
 
 import com.apply.diarypic.diary.entity.DiaryPhoto;
 import lombok.Data;
@@ -9,7 +9,7 @@ import java.time.LocalDate;
 public class PhotoResponse {
     private Long id;
     private String photoUrl;
-    private LocalDate shootingDate;
+    private LocalDateTime shootingDateTime;
     private String location;
     private Boolean isRecommended;
     private Integer sequence;
@@ -19,7 +19,7 @@ public class PhotoResponse {
         PhotoResponse response = new PhotoResponse();
         response.setId(diaryPhoto.getId());
         response.setPhotoUrl(diaryPhoto.getPhotoUrl());
-        response.setShootingDate(diaryPhoto.getShootingDate());
+        response.setShootingDateTime(diaryPhoto.getShootingDateTime());
         response.setLocation(diaryPhoto.getLocation());
         response.setIsRecommended(diaryPhoto.getIsRecommended());
         response.setSequence(diaryPhoto.getSequence());

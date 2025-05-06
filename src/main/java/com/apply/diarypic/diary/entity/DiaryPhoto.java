@@ -22,7 +22,7 @@ public class DiaryPhoto {
     private String photoUrl;
 
     // 촬영일 (날짜만 필요할 경우)
-    private LocalDate shootingDate;
+    private LocalDateTime shootingDateTime;
 
     // 촬영 장소 정보
     private String location;

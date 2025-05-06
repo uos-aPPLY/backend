@@ -9,6 +9,7 @@ public class PhotoDto {
     private String photoUrl;
     private LocalDateTime shootingDateTime;
     private String location;
+    private String detailedAddress;
     private Boolean isRecommended;
     private Integer sequence;
 }

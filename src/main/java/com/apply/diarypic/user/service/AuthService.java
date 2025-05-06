@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 @Slf4j
@@ -69,11 +70,11 @@ public class AuthService {
                     return userRepository.save(newUser);
                 });
 
-        // (선택 사항) 기존 사용자의 경우 닉네임 업데이트 로직 추가 가능
-        if (!user.getNickname().equals(finalNickname)) {
-            log.info("🔄 사용자 닉네임 업데이트: userId={}, oldNickname={}, newNickname={}", user.getId(), user.getNickname(), finalNickname);
-            user.setNickname(finalNickname); // User 엔티티에 @Setter(AccessLevel.PACKAGE) 등 필요
-            // userRepository.save(user); // @Transactional에 의해 더티 체킹으로 업데이트됨
+        if (!Objects.equals(user.getNickname(), finalNickname)) {
+            // 현재 닉네임과 finalNickname이 다를 경우 (어느 한쪽이 null이거나, 둘 다 값이 있는데 다른 경우)
+            log.info("🔄 사용자 닉네임 업데이트: userId={}, oldNickname={}, newNickname={}",
+                    user.getId(), user.getNickname(), finalNickname);
+            user.setNickname(finalNickname);
         }
 
 

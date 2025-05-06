@@ -26,7 +26,7 @@ public class PhotoSelectionController {
         return ResponseEntity.ok(tempPhotos);
     }
 
-    @Operation(summary = "최종 사진 선택 확정 (최종 10장 구성)")
+    @Operation(summary = "최종 사진 선택 확정 (최종 9장 구성)")
     @PostMapping("/finalize")
     public ResponseEntity<List<DiaryPhoto>> finalizePhotoSelection(
             @CurrentUser UserPrincipal userPrincipal,

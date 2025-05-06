@@ -23,7 +23,7 @@ import java.io.IOException;
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
-    private final JwtProvider jwtProvider;
+    private final JwtUtils jwtUtils;
     private final UserRepository userRepository;
 
     @Override
@@ -32,8 +32,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
 
         String token = extractToken(request);
-        if (token != null && jwtProvider.validateToken(token)) {
-            Claims claims = jwtProvider.getClaims(token);
+        if (token != null && jwtUtils.validateToken(token)) {
+            Claims claims = jwtUtils.getClaims(token);
             Long userId = Long.valueOf(claims.getSubject());
             String provider = claims.get("provider", String.class);
 

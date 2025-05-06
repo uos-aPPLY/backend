@@ -1,6 +1,7 @@
 package com.apply.diarypic.diary.dto;
 
 import com.apply.diarypic.diary.entity.Diary;
+import com.apply.diarypic.photo.dto.PhotoResponse;
 import lombok.Data;
 import java.time.LocalDateTime;
 import java.util.List;

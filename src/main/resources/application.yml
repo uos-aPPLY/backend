@@ -69,6 +69,10 @@ spring:
             user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
             user-name-attribute: sub
 
+google:
+  maps:
+    api:
+      key:
 # 공통 JWT 설정
 jwt:
   secret: ${JWT_SECRET}

@@ -1,0 +1,16 @@
+package com.apply.diarypic.photo.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+import java.util.List;
+
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class AiPhotoRecommendResponse {
+    private List<Long> recommendedPhotoIds; // AI가 추천한 사진 ID 목록
+}

@@ -1,6 +1,6 @@
 spring:
   profiles:
-    active: docker # local or docker
+    active: local # local or docker
   jackson:
     serialization:
       fail-on-empty-beans: false
@@ -84,6 +84,9 @@ server:
   port: 8080
   servlet:
     context-path: /
+
+ai-server:
+  base-url: http://localhost:8000
 
 # 공통 로깅 설정
 logging:

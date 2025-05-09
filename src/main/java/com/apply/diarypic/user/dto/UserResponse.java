@@ -1,5 +1,7 @@
 package com.apply.diarypic.user.dto;
 
+import com.apply.diarypic.user.entity.User;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -14,9 +16,11 @@ public class UserResponse {
     private String nickname;
     private String writingStylePrompt;
     private Boolean alarmEnabled;
+
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm")
     private LocalTime alarmTime;
 
-    public static UserResponse from(com.apply.diarypic.user.entity.User user) {
+    public static UserResponse from(User user) {
         return UserResponse.builder()
                 .id(user.getId())
                 .snsProvider(user.getSnsProvider())

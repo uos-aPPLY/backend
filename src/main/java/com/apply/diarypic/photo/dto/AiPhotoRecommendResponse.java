@@ -12,5 +12,5 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AiPhotoRecommendResponse {
-    private List<Long> recommendedPhotoIds; // AI가 추천한 사진 ID 목록
+    private List<Long> recommendedPhotoIds;
 }

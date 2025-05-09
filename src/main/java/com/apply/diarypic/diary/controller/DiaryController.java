@@ -3,10 +3,10 @@ package com.apply.diarypic.diary.controller;
 import com.apply.diarypic.diary.dto.AiDiaryCreateRequest;
 import com.apply.diarypic.diary.dto.DiaryRequest;
 import com.apply.diarypic.diary.dto.DiaryResponse;
+import com.apply.diarypic.diary.dto.FavoriteToggleRequest;
 import com.apply.diarypic.diary.service.DiaryService;
 import com.apply.diarypic.global.security.CurrentUser;
 import com.apply.diarypic.global.security.UserPrincipal;
-// User 엔티티와 UserRepository를 직접 여기서 사용할 필요는 없습니다. 서비스 계층에서 처리합니다.
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -19,12 +19,12 @@ import org.springframework.web.bind.annotation.*;
 public class DiaryController {
 
     private final DiaryService diaryService;
-    // private final UserRepository userRepository; // Controller에서 Repository 직접 사용 지양
 
     @Operation(summary = "사용자가 직접 작성한 일기 생성")
     @PostMapping
     public ResponseEntity<DiaryResponse> createDiary(@CurrentUser UserPrincipal userPrincipal,
                                                      @Valid @RequestBody DiaryRequest diaryRequest) {
+        // DiaryRequest에 diaryDate가 포함되어 DiaryService.createDiary로 전달됨
         DiaryResponse response = diaryService.createDiary(diaryRequest, userPrincipal.getUserId());
         return ResponseEntity.ok(response);
     }
@@ -33,12 +33,31 @@ public class DiaryController {
     @PostMapping("/auto")
     public ResponseEntity<DiaryResponse> createAiDiary(@CurrentUser UserPrincipal userPrincipal,
                                                        @Valid @RequestBody AiDiaryCreateRequest aiDiaryCreateRequest) {
-        // userSpeech를 요청 본문에서 받지 않고, 인증된 사용자의 정보를 활용합니다.
-        // DiaryService로 userId와 함께 요청 DTO를 전달합니다.
+        // AiDiaryCreateRequest에 diaryDate가 포함되어 DiaryService.createDiaryWithAiAssistance로 전달됨
         DiaryResponse response = diaryService.createDiaryWithAiAssistance(
-                userPrincipal.getUserId(), // 현재 로그인한 사용자의 ID
+                userPrincipal.getUserId(),
+                aiDiaryCreateRequest.getDiaryDate(), // diaryDate 전달
                 aiDiaryCreateRequest.getFinalizedPhotos()
         );
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "일기 좋아요(즐겨찾기) 상태 토글")
+    @PatchMapping("/{diaryId}/favorite/toggle") // 토글 방식 엔드포인트
+    public ResponseEntity<DiaryResponse> toggleDiaryFavorite(
+            @CurrentUser UserPrincipal userPrincipal,
+            @PathVariable Long diaryId) {
+        DiaryResponse response = diaryService.toggleDiaryFavorite(userPrincipal.getUserId(), diaryId);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "일기 좋아요(즐겨찾기) 상태 설정")
+    @PatchMapping("/{diaryId}/favorite") // 특정 상태로 설정하는 엔드포인트
+    public ResponseEntity<DiaryResponse> setDiaryFavorite(
+            @CurrentUser UserPrincipal userPrincipal,
+            @PathVariable Long diaryId,
+            @Valid @RequestBody FavoriteToggleRequest request) {
+        DiaryResponse response = diaryService.setDiaryFavorite(userPrincipal.getUserId(), diaryId, request);
         return ResponseEntity.ok(response);
     }
 

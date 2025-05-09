@@ -1,8 +1,7 @@
 package com.apply.diarypic.photo.dto;
 
 import lombok.Data;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.time.LocalDateTime; // LocalDate는 이 DTO에서 직접 사용하지 않으므로 제거 가능
 
 @Data
 public class PhotoDto {
@@ -10,6 +9,5 @@ public class PhotoDto {
     private LocalDateTime shootingDateTime;
     private String location;
     private String detailedAddress;
-    private Boolean isRecommended;
     private Integer sequence;
 }

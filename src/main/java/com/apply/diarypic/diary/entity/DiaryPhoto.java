@@ -24,12 +24,13 @@ public class DiaryPhoto {
     private String photoUrl;
 
     private LocalDateTime shootingDateTime;
+
     private String location;
 
     @Column(name = "detailed_address")
     private String detailedAddress;
 
-    private Boolean isRecommended;
+    @Setter
     private Integer sequence;
 
     @Column(nullable = false, updatable = false)
@@ -38,11 +39,11 @@ public class DiaryPhoto {
     @Column(nullable = false)
     private Long userId;
 
+    @Setter
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "diary_id")
     private Diary diary;
 
-    // Keyword 관련
     @OneToMany(mappedBy = "diaryPhoto", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private Set<PhotoKeyword> photoKeywords = new HashSet<>();

@@ -1,11 +1,14 @@
 package com.apply.diarypic.photo.controller;
 
-import com.apply.diarypic.diary.entity.DiaryPhoto;
 import com.apply.diarypic.global.security.CurrentUser;
 import com.apply.diarypic.global.security.UserPrincipal;
+import com.apply.diarypic.photo.dto.AiPhotoRecommendRequest;  // AI 추천 요청 DTO
+import com.apply.diarypic.photo.dto.AiPhotoRecommendResponse; // AI 추천 응답 DTO
 import com.apply.diarypic.photo.dto.FinalizePhotoSelectionRequest;
 import com.apply.diarypic.photo.dto.PhotoResponse;
+import com.apply.diarypic.photo.service.PhotoRecommendationService;
 import com.apply.diarypic.photo.service.PhotoSelectionService;
+
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -21,22 +24,37 @@ import java.util.stream.Collectors;
 public class PhotoSelectionController {
 
     private final PhotoSelectionService photoSelectionService;
+    private final PhotoRecommendationService photoRecommendationService; // 주입
 
     @Operation(summary = "임시 업로드 사진 조회")
     @GetMapping("/temp")
-    public ResponseEntity<List<PhotoResponse>> getTemporaryPhotos(@CurrentUser UserPrincipal userPrincipal) { // 반환 타입 DTO로 변경
+    public ResponseEntity<List<PhotoResponse>> getTemporaryPhotos(@CurrentUser UserPrincipal userPrincipal) {
         List<PhotoResponse> tempPhotos = photoSelectionService.getTemporaryPhotos(userPrincipal.getUserId());
         return ResponseEntity.ok(tempPhotos);
     }
 
-    @Operation(summary = "최종 사진 선택 확정 (최종 9장 또는 10장 구성 - 코드 확인 필요)")
+    @Operation(summary = "AI에게 사진 추천 요청 (최대 9장 구성 위한)")
+    @PostMapping("/ai-recommend") // 복구된 엔드포인트
+    public ResponseEntity<AiPhotoRecommendResponse> getAiRecommendedPhotos(
+            @CurrentUser UserPrincipal userPrincipal,
+            @Valid @RequestBody AiPhotoRecommendRequest request) {
+
+        List<Long> recommendedIds = photoRecommendationService.getRecommendedPhotosFromAI(
+                userPrincipal.getUserId(),
+                request.getUploadedPhotoIds(),
+                request.getMandatoryPhotoIds()
+        );
+        return ResponseEntity.ok(new AiPhotoRecommendResponse(recommendedIds));
+    }
+
+    @Operation(summary = "최종 사진 선택 확정 (최종 9장 구성)")
     @PostMapping("/finalize")
-    public ResponseEntity<List<PhotoResponse>> finalizePhotoSelection( // 반환 타입을 List<PhotoResponse>로 변경
-                                                                       @CurrentUser UserPrincipal userPrincipal,
-                                                                       @Valid @RequestBody FinalizePhotoSelectionRequest request) {
-        List<DiaryPhoto> finalDiaryPhotos = photoSelectionService.finalizePhotoSelection(userPrincipal.getUserId(), request.getPhotoIds());
-        // DiaryPhoto를 PhotoResponse DTO로 변환하여 반환
-        List<PhotoResponse> finalPhotoResponses = finalDiaryPhotos.stream()
+    public ResponseEntity<List<PhotoResponse>> finalizePhotoSelection(
+            @CurrentUser UserPrincipal userPrincipal,
+            @Valid @RequestBody FinalizePhotoSelectionRequest request) {
+        // PhotoSelectionService.finalizePhotoSelection이 List<DiaryPhoto>를 반환하면 DTO로 변환
+        List<PhotoResponse> finalPhotoResponses = photoSelectionService.finalizePhotoSelection(userPrincipal.getUserId(), request.getPhotoIds())
+                .stream()
                 .map(PhotoResponse::from)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(finalPhotoResponses);

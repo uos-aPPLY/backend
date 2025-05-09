@@ -1,6 +1,7 @@
 package com.apply.diarypic.user.service;
 
 import com.apply.diarypic.global.security.jwt.JwtUtils;
+import com.apply.diarypic.keyword.service.KeywordService;
 import com.apply.diarypic.user.dto.AuthRequest;
 import com.apply.diarypic.user.dto.AuthResponse;
 import com.apply.diarypic.user.dto.UserInfoResponse;
@@ -21,6 +22,7 @@ public class AuthService {
     private final SocialUserInfoService socialUserInfoService;
     private final UserRepository userRepository;
     private final JwtUtils jwtUtils;
+    private final KeywordService keywordService;
 
     @Transactional
     public AuthResponse authenticate(AuthRequest req) {
@@ -69,6 +71,9 @@ public class AuthService {
                             .writingStylePrompt("기본 말투입니다.") // 기본값 설정
                             .alarmEnabled(false) // 기본값 설정
                             .build();
+                    User savedNewUser = userRepository.save(newUser);
+                    keywordService.createInitialRecommendedKeywordsForUser(savedNewUser);
+                    log.info("✅ 사용자 ID {} 에게 초기 추천 키워드 생성 완료.", savedNewUser.getId());
                     return userRepository.save(newUser);
                 });
 

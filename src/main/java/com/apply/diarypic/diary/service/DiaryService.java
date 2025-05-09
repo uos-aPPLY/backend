@@ -11,6 +11,12 @@ import com.apply.diarypic.diary.entity.Diary;
 import com.apply.diarypic.diary.entity.DiaryPhoto;
 import com.apply.diarypic.diary.repository.DiaryRepository;
 import com.apply.diarypic.global.s3.S3Uploader;
+import com.apply.diarypic.keyword.entity.Keyword;
+import com.apply.diarypic.keyword.entity.PhotoKeyword;
+import com.apply.diarypic.keyword.entity.PhotoKeywordId;
+import com.apply.diarypic.keyword.repository.KeywordRepository;
+import com.apply.diarypic.keyword.repository.PhotoKeywordRepository;
+import com.apply.diarypic.keyword.service.KeywordService;
 import com.apply.diarypic.photo.repository.PhotoRepository;
 import com.apply.diarypic.user.entity.User;
 import com.apply.diarypic.user.repository.UserRepository;
@@ -21,7 +27,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -30,32 +39,26 @@ import java.util.stream.Collectors;
 public class DiaryService {
 
     private final DiaryRepository diaryRepository;
-    private final UserRepository userRepository; // UserRepository 주입
+    private final UserRepository userRepository;
     private final PhotoRepository photoRepository;
     private final AiServerService aiServerService;
     private final S3Uploader s3Uploader;
+    private final KeywordRepository keywordRepository; // KeywordRepository 주입
+    private final PhotoKeywordRepository photoKeywordRepository; // PhotoKeywordRepository 주입
+    private final KeywordService keywordService;
 
     private static final DateTimeFormatter ISO_LOCAL_DATE_TIME_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
-    /**
-     * AI를 활용하여 자동 일기를 생성합니다.
-     *
-     * @param userId 현재 사용자 ID
-     * @param finalizedPhotoPayloads 프론트엔드에서 전달받은 최종 사진 정보 (ID, 키워드, 순서)
-     * @return 생성된 일기 정보
-     */
     @Transactional
-    public DiaryResponse createDiaryWithAiAssistance(Long userId, /* String userSpeech 파라미터 제거 */ List<AiDiaryCreateRequest.FinalizedPhotoPayload> finalizedPhotoPayloads) {
+    public DiaryResponse createDiaryWithAiAssistance(Long userId, List<AiDiaryCreateRequest.FinalizedPhotoPayload> finalizedPhotoPayloads) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다. ID: " + userId));
 
-        // 사용자의 writingStylePrompt 가져오기
         String userWritingStyle = user.getWritingStylePrompt();
         if (userWritingStyle == null || userWritingStyle.isBlank()) {
             log.warn("User ID {} has no writingStylePrompt set. Using a default or empty prompt.", userId);
             userWritingStyle = "오늘 있었던 일을 바탕으로 일기를 작성해줘.";
         }
-
 
         if (finalizedPhotoPayloads == null || finalizedPhotoPayloads.isEmpty()) {
             throw new IllegalArgumentException("AI 일기 생성을 위한 사진 정보가 없습니다.");
@@ -77,16 +80,14 @@ public class DiaryService {
                             diaryPhoto.getPhotoUrl(),
                             diaryPhoto.getShootingDateTime() != null ? diaryPhoto.getShootingDateTime().format(ISO_LOCAL_DATE_TIME_FORMATTER) : null,
                             diaryPhoto.getDetailedAddress(),
-                            payload.getKeyword(),
+                            payload.getKeyword(), // 프론트에서 받은 쉼표 구분 키워드 문자열
                             payload.getSequence()
                     );
                 })
                 .collect(Collectors.toList());
 
-        // AiDiaryGenerateRequestDto 생성 시 userWritingStyle 사용
         AiDiaryGenerateRequestDto aiRequest = new AiDiaryGenerateRequestDto(userWritingStyle, imageInfoForAi);
-
-        AiDiaryResponseDto aiResponse = aiServerService.requestDiaryGeneration(aiRequest).block(); // 동기 처리 (테스트용)
+        AiDiaryResponseDto aiResponse = aiServerService.requestDiaryGeneration(aiRequest).block();
 
         if (aiResponse == null || aiResponse.getDiary_text() == null || aiResponse.getDiary_text().isEmpty()) {
             log.error("AI 서버로부터 유효한 일기 내용을 받지 못했습니다. User ID: {}, AI 응답: {}", userId, aiResponse != null ? aiResponse.getDiary_text() : "null");
@@ -107,6 +108,9 @@ public class DiaryService {
                         throw new SecurityException("해당 사진에 대한 접근 권한이 없습니다. Photo ID: " + payload.getPhotoId());
                     }
                     dp.setSequence(payload.getSequence());
+                    // 기존 키워드 연결 정보 초기화 (선택적: 덮어쓰기 방식이라면)
+                    // photoKeywordRepository.deleteByDiaryPhotoId(dp.getId());
+                    // photoCustomKeywordRepository.deleteByDiaryPhotoId(dp.getId());
                     return dp;
                 })
                 .collect(Collectors.toList());
@@ -118,15 +122,65 @@ public class DiaryService {
                 .emotionIcon("🙂")
                 .isFavorited(false)
                 .status("미확인")
-                .diaryPhotos(diaryPhotosForDiary)
+                .diaryPhotos(new ArrayList<>()) // 초기에는 비워두고 아래에서 채움 (JPA LifeCycle 고려)
                 .build();
 
-        for (DiaryPhoto dp : diaryPhotosForDiary) {
-            dp.setDiary(diary);
+        // 먼저 Diary를 저장하여 ID를 할당받음 (DiaryPhoto의 FK로 사용하기 위해)
+        Diary savedDiary = diaryRepository.save(diary);
+
+        List<DiaryPhoto> diaryPhotosForDiaryEntities = finalizedPhotoPayloads.stream()
+                .map(payload -> photoRepository.findById(payload.getPhotoId())
+                        .map(dp -> {
+                            if (!dp.getUserId().equals(userId)) {
+                                throw new SecurityException("해당 사진에 대한 접근 권한이 없습니다. Photo ID: " + payload.getPhotoId());
+                            }
+                            dp.setDiary(savedDiary); // DiaryPhoto에 Diary 설정
+                            dp.setSequence(payload.getSequence());
+                            savedDiary.getDiaryPhotos().add(dp); // Diary 컬렉션에도 추가
+                            return dp;
+                        }).orElseThrow(() -> new IllegalArgumentException("저장할 사진 정보를 찾을 수 없습니다. ID: " + payload.getPhotoId()))
+                ).collect(Collectors.toList());
+
+        for (int i = 0; i < finalizedPhotoPayloads.size(); i++) {
+            AiDiaryCreateRequest.FinalizedPhotoPayload payload = finalizedPhotoPayloads.get(i);
+            DiaryPhoto currentDiaryPhoto = diaryPhotosForDiaryEntities.get(i);
+
+            String keywordString = payload.getKeyword(); // "키워드1, 키워드2, 자유입력키워드"
+            if (keywordString != null && !keywordString.isBlank()) {
+                Arrays.stream(keywordString.split("\\s*,\\s*"))
+                        .map(String::trim)
+                        .filter(kwText -> !kwText.isEmpty())
+                        .distinct()
+                        .forEach(kwText -> {
+                            // 1. 사용자의 개인 키워드로 생성 또는 조회
+                            // KeywordService의 createOrGetPersonalKeyword는 KeywordDto를 반환하므로,
+                            // Keyword 엔티티를 직접 다루려면 Repository를 사용하거나 KeywordService에 엔티티 반환 메소드 추가 필요.
+                            // 여기서는 Repository를 직접 사용한다고 가정.
+                            Keyword keywordEntity = keywordRepository.findByNameAndUser(kwText, user)
+                                    .orElseGet(() -> {
+                                        Keyword newKeyword = Keyword.builder()
+                                                .name(kwText)
+                                                .user(user)
+                                                .build();
+                                        return keywordRepository.save(newKeyword);
+                                    });
+
+                            // 2. photo_keywords 테이블에 매핑 (중복 방지)
+                            PhotoKeywordId photoKeywordId = new PhotoKeywordId(currentDiaryPhoto.getId(), keywordEntity.getId());
+                            if (!photoKeywordRepository.existsById(photoKeywordId)) {
+                                PhotoKeyword newPhotoKeyword = PhotoKeyword.builder()
+                                        .diaryPhoto(currentDiaryPhoto)
+                                        .keyword(keywordEntity)
+                                        .build();
+                                photoKeywordRepository.save(newPhotoKeyword);
+                            }
+                        });
+            }
         }
-        return diaryRepository.save(diary);
+        return savedDiary; // 키워드까지 처리된 Diary 반환
     }
 
+    // deleteDiary, createDiary 메소드는 이전과 동일
     @Transactional
     public void deleteDiary(Long userId, Long diaryId) {
         Diary diary = diaryRepository.findById(diaryId)
@@ -149,32 +203,51 @@ public class DiaryService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
 
-        List<DiaryPhoto> photos = photoRepository.findAllById(request.getPhotoIds());
-        if (photos.size() != request.getPhotoIds().size()) {
+        List<DiaryPhoto> photosFromDb = photoRepository.findAllById(request.getPhotoIds());
+        if (photosFromDb.size() != request.getPhotoIds().size()) {
             throw new IllegalArgumentException("유효하지 않은 photoId가 포함되어 있습니다.");
         }
-        for(DiaryPhoto photo : photos){
+
+        List<DiaryPhoto> photosForDiary = new ArrayList<>();
+        for (Long photoId : request.getPhotoIds()) { // 요청받은 ID 순서대로 처리
+            DiaryPhoto photo = photosFromDb.stream()
+                    .filter(p -> p.getId().equals(photoId))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("Photo not found with id: " + photoId)); // 논리적으로 발생하기 어려움
+
             if(!photo.getUserId().equals(userId)){
                 throw new SecurityException("해당 사진에 대한 접근 권한이 없습니다. Photo ID: " + photo.getId());
             }
+            photosForDiary.add(photo);
         }
 
-        for (int i = 0; i < photos.size(); i++) {
-            photos.get(i).setSequence(i + 1);
+
+        for (int i = 0; i < photosForDiary.size(); i++) {
+            photosForDiary.get(i).setSequence(i + 1); // 요청받은 photoIds 순서대로 sequence 부여
         }
 
         Diary diary = Diary.builder()
                 .user(user)
-                .title(request.getTitle() != null ? request.getTitle() : "나의 일기")
+                .title(request.getTitle() != null && !request.getTitle().isBlank() ? request.getTitle() : "나의 일기")
                 .content(request.getContent())
                 .emotionIcon(request.getEmotionIcon())
-                .diaryPhotos(photos)
+                // .diaryPhotos(photosForDiary) // 아래에서 처리
                 .isFavorited(false)
                 .status("확인")
                 .build();
 
-        photos.forEach(photo -> photo.setDiary(diary));
-        Diary saved = diaryRepository.save(diary);
-        return DiaryResponse.from(saved);
+        Diary savedDiary = diaryRepository.save(diary); // 먼저 Diary 저장
+
+        photosForDiary.forEach(photo -> {
+            photo.setDiary(savedDiary); // DiaryPhoto에 Diary 설정
+            savedDiary.getDiaryPhotos().add(photo); // Diary 컬렉션에도 추가
+        });
+        // photoRepository.saveAll(photosForDiary); // 명시적으로 호출하지 않아도 Cascade로 처리될 수 있음
+
+        // createAndSaveDiaryEntity 헬퍼 메소드를 호출하도록 리팩토링 가능 (키워드 저장 로직 포함시키려면)
+        // 하지만 이 createDiary는 프론트에서 keyword 문자열을 직접 보내지 않으므로, 키워드 처리 로직은 여기에 없음.
+        // 만약 DiaryRequest DTO에도 keyword 문자열을 추가한다면, 위 AI 생성 로직과 유사하게 키워드 저장 가능.
+
+        return DiaryResponse.from(savedDiary);
     }
 }

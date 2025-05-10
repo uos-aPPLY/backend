@@ -40,6 +40,9 @@ public class Diary {
     @Column(nullable = false)
     private LocalDate diaryDate; // 일기가 해당하는 실제 날짜
 
+    @Column(length = 512)
+    private String representativePhotoUrl;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

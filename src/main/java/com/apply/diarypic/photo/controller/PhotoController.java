@@ -28,7 +28,7 @@ import java.util.List;
 @Tag(name = "Photo", description = "사진 업로드 API")
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/photos")
+@RequestMapping("/api/photoss")
 @Slf4j
 public class PhotoController {
 

@@ -24,4 +24,6 @@ public interface UserTermsAgreementRepository extends JpaRepository<UserTermsAgr
             "WHERE uta.user = :user AND uta.agreed = true AND uta.terms.termsType = :termsType " +
             "AND uta.terms.version = (SELECT MAX(t.version) FROM Terms t WHERE t.termsType = :termsType)")
     Optional<UserTermsAgreement> findUserAgreementForLatestTermsByType(@Param("user") User user, @Param("termsType") TermsType termsType);
+
+    void deleteAllByUser(User user);
 }

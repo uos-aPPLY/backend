@@ -9,7 +9,7 @@ import com.apply.diarypic.diary.dto.DiaryRequest;
 import com.apply.diarypic.diary.dto.DiaryResponse;
 import com.apply.diarypic.diary.dto.FavoriteToggleRequest;
 import com.apply.diarypic.diary.entity.Diary;
-import com.apply.diarypic.diary.entity.DiaryPhoto;
+import com.apply.diarypic.photo.entity.DiaryPhoto;
 import com.apply.diarypic.diary.repository.DiaryRepository;
 import com.apply.diarypic.global.s3.S3Uploader;
 import com.apply.diarypic.keyword.entity.Keyword;
@@ -27,12 +27,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Slf4j

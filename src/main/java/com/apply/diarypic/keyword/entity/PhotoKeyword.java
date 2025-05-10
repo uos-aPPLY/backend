@@ -1,6 +1,6 @@
 package com.apply.diarypic.keyword.entity;
 
-import com.apply.diarypic.diary.entity.DiaryPhoto;
+import com.apply.diarypic.photo.entity.DiaryPhoto;
 import jakarta.persistence.*;
 import lombok.*;
 

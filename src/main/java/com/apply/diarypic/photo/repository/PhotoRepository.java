@@ -1,6 +1,6 @@
 package com.apply.diarypic.photo.repository;
 
-import com.apply.diarypic.diary.entity.DiaryPhoto;
+import com.apply.diarypic.photo.entity.DiaryPhoto;
 import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 

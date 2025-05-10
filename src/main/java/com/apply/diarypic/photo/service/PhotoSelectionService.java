@@ -1,8 +1,8 @@
 package com.apply.diarypic.photo.service;
 
-import com.apply.diarypic.diary.entity.DiaryPhoto;
+import com.apply.diarypic.photo.entity.DiaryPhoto;
 import com.apply.diarypic.global.s3.S3Uploader;
-import com.apply.diarypic.photo.dto.PhotoResponse; // DTO 임포트
+import com.apply.diarypic.photo.dto.PhotoResponse;
 import com.apply.diarypic.photo.repository.PhotoRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,23 +20,14 @@ public class PhotoSelectionService {
     private final PhotoRepository photoRepository;
     private final S3Uploader s3Uploader;
 
-    /**
-     * 현재 사용자의 임시 업로드 사진 조회 (diary가 아직 연결되지 않은 사진)
-     * DTO를 사용하여 필요한 데이터만 반환하고 LazyInitializationException 방지.
-     */
-    @Transactional(readOnly = true) // DTO 변환 중 엔티티의 다른 필드 접근 가능성 고려
+    @Transactional(readOnly = true)
     public List<PhotoResponse> getTemporaryPhotos(Long userId) {
         List<DiaryPhoto> tempPhotos = photoRepository.findByDiaryIsNullAndUserId(userId);
-        // DiaryPhoto 엔티티를 PhotoResponse DTO로 변환
         return tempPhotos.stream()
-                .map(PhotoResponse::from) // PhotoResponse.from 정적 메소드 사용
+                .map(PhotoResponse::from)
                 .collect(Collectors.toList());
     }
 
-    /**
-     * 최종 선택 확정
-     * (이 메소드도 List<PhotoResponse>를 반환하도록 변경하는 것이 일관성 있고 좋습니다.)
-     */
     @Transactional
     public List<DiaryPhoto> finalizePhotoSelection(Long userId, List<Long> finalPhotoIds) {
         List<DiaryPhoto> tempPhotos = photoRepository.findByDiaryIsNullAndUserId(userId);
@@ -48,8 +39,8 @@ public class PhotoSelectionService {
                 .filter(photo -> finalPhotoIds.contains(photo.getId()))
                 .collect(Collectors.toList());
 
-        if (finalPhotos.size() > 10) { // 기획은 9장이었으나, 코드에는 10장으로 되어 있음
-            throw new IllegalArgumentException("최종 선택 사진은 최대 10장까지 가능합니다.");
+        if (finalPhotos.size() > 9) {
+            throw new IllegalArgumentException("최종 선택 사진은 최대 9장까지 가능합니다.");
         }
 
         List<DiaryPhoto> photosToDelete = tempPhotos.stream()
@@ -65,27 +56,30 @@ public class PhotoSelectionService {
                 }
             }
         }
-        // 변경된 finalPhotos를 저장해야 sequence가 DB에 반영됩니다.
-        // photoRepository.saveAll(finalPhotos); // JPA Dirty Checking으로 자동 업데이트될 수도 있지만, 명시적 save 권장
+        // photoRepository.saveAll(finalPhotos); // 변경된 finalPhotos 저장 (JPA Dirty Checking으로 자동 업데이트될 수 있지만 명시적 save 권장)
 
         for (DiaryPhoto photo : photosToDelete) {
+            // S3 삭제 로직 임시 주석 처리 시작
+            /*
             try {
                 s3Uploader.delete(photo.getPhotoUrl());
                 log.info("S3에서 사진 삭제 성공: {}", photo.getPhotoUrl());
             } catch (Exception e) {
-                log.error("S3 사진 삭제 실패: {}", photo.getPhotoUrl(), e);
-                // S3 삭제 실패 시 롤백 여부 등 정책 필요
+                log.error("S3 사진 삭제 실패 (임시로 DB만 삭제 진행): {}", photo.getPhotoUrl(), e);
+                // S3 삭제 실패 시에도 DB 삭제는 진행하도록 throw 주석 처리
+                // throw new RuntimeException("사진 삭제 중 S3 오류가 발생했습니다.");
             }
+            */
+            log.warn("S3 사진 삭제 로직이 임시로 비활성화되었습니다. URL: {}", photo.getPhotoUrl());
+            // S3 삭제 로직 임시 주석 처리 끝
+
             photoRepository.delete(photo);
             log.info("DB에서 사진 삭제 성공: ID {}", photo.getId());
         }
 
-        return finalPhotos; // 이 부분도 DTO로 변환하여 반환하는 것을 고려
+        return finalPhotos;
     }
 
-    /**
-     * 임시 사진 개별 삭제
-     */
     @Transactional
     public void deletePhoto(Long userId, Long photoId) {
         DiaryPhoto photo = photoRepository.findById(photoId)
@@ -94,16 +88,24 @@ public class PhotoSelectionService {
         if (!photo.getUserId().equals(userId)) {
             throw new IllegalArgumentException("해당 사진에 대한 삭제 권한이 없습니다.");
         }
-        // if (photo.getDiary() != null) { // 일기 포함 사진 삭제 방지 로직 (주석)
+        // if (photo.getDiary() != null) {
         // throw new IllegalArgumentException("이미 일기에 등록된 사진은 삭제할 수 없습니다.");
         // }
+
+        // S3 삭제 로직 임시 주석 처리 시작
+        /*
         try {
             s3Uploader.delete(photo.getPhotoUrl());
             log.info("S3에서 사진 삭제 성공: {}", photo.getPhotoUrl());
         } catch (Exception e) {
-            log.error("S3 사진 삭제 실패: {}", photo.getPhotoUrl(), e);
-            throw new RuntimeException("사진 삭제 중 S3 오류가 발생했습니다.");
+            log.error("S3 사진 삭제 실패 (임시로 DB만 삭제 진행): {}", photo.getPhotoUrl(), e);
+            // S3 삭제 실패 시에도 DB 삭제는 진행하도록 throw 주석 처리
+            // throw new RuntimeException("사진 삭제 중 S3 오류가 발생했습니다.");
         }
+        */
+        log.warn("S3 사진 삭제 로직이 임시로 비활성화되었습니다. URL: {}", photo.getPhotoUrl());
+        // S3 삭제 로직 임시 주석 처리 끝
+
         photoRepository.delete(photo);
         log.info("DB에서 사진 삭제 성공: ID {}", photoId);
     }

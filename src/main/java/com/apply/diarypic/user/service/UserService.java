@@ -1,9 +1,11 @@
 package com.apply.diarypic.user.service;
 
 import com.apply.diarypic.diary.entity.Diary;
-import com.apply.diarypic.diary.entity.DiaryPhoto;
+import com.apply.diarypic.photo.entity.DiaryPhoto;
 import com.apply.diarypic.diary.repository.DiaryRepository;
 import com.apply.diarypic.global.s3.S3Uploader;
+import com.apply.diarypic.keyword.repository.KeywordRepository;
+import com.apply.diarypic.terms.repository.UserTermsAgreementRepository;
 import com.apply.diarypic.user.entity.User;
 import com.apply.diarypic.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +23,8 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final DiaryRepository diaryRepository;
+    private final KeywordRepository keywordRepository;
+    private final UserTermsAgreementRepository userTermsAgreementRepository;
     private final S3Uploader s3Uploader;
 
     public User getUserById(Long userId) {
@@ -64,16 +68,20 @@ public class UserService {
         List<Diary> diaries = diaryRepository.findByUserId(userId);
         for (Diary diary : diaries) {
             for (DiaryPhoto photo : diary.getDiaryPhotos()) {
+                /*
                 try {
                     s3Uploader.delete(photo.getPhotoUrl());
                 } catch (Exception e) {
                     // 로그만 남기고 계속
                     log.error("S3 사진 삭제 실패: {}", photo.getPhotoUrl(), e);
                 }
+                 */
             }
         }
 
         // 2) DB에서 User 삭제 (cascade 옵션에 따라 Diary/Photo가 함께 삭제)
+        userTermsAgreementRepository.deleteAllByUser(user);
+        keywordRepository.deleteAllByUser(user);
         diaryRepository.deleteAll(diaries);
         userRepository.delete(user);
     }

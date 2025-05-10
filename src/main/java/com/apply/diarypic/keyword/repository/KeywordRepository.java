@@ -14,4 +14,6 @@ public interface KeywordRepository extends JpaRepository<Keyword, Long> {
 
     // 특정 사용자의 모든 개인 키워드 목록 조회
     List<Keyword> findByUserOrderByNameAsc(User user);
+
+    void deleteAllByUser(User user);
 }

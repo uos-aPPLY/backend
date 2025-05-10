@@ -1,6 +1,6 @@
 package com.apply.diarypic.photo.service;
 
-import com.apply.diarypic.diary.entity.DiaryPhoto;
+import com.apply.diarypic.photo.entity.DiaryPhoto;
 import com.apply.diarypic.global.geocoding.GeocodingService;
 import com.apply.diarypic.global.s3.S3Uploader;
 import com.apply.diarypic.photo.repository.PhotoRepository;

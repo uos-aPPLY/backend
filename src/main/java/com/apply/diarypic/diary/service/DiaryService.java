@@ -9,9 +9,8 @@ import com.apply.diarypic.diary.dto.AiDiaryCreateRequest;
 import com.apply.diarypic.diary.dto.DiaryRequest;
 import com.apply.diarypic.diary.dto.DiaryResponse;
 import com.apply.diarypic.diary.dto.FavoriteToggleRequest; // FavoriteToggleRequest 임포트
-import com.apply.diarypic.diary.dto.SetRepresentativePhotoRequest; // SetRepresentativePhotoRequest 임포트
 import com.apply.diarypic.diary.entity.Diary;
-import com.apply.diarypic.diary.entity.DiaryPhoto;
+import com.apply.diarypic.photo.entity.DiaryPhoto;
 import com.apply.diarypic.diary.repository.DiaryRepository;
 import com.apply.diarypic.global.s3.S3Uploader;
 import com.apply.diarypic.keyword.entity.Keyword;
@@ -33,16 +32,12 @@ import org.springframework.util.StringUtils;
 
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator; // Comparator 임포트
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
-import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 

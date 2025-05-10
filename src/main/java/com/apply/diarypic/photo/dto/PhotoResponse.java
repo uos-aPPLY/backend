@@ -1,6 +1,6 @@
 package com.apply.diarypic.photo.dto;
 
-import com.apply.diarypic.diary.entity.DiaryPhoto;
+import com.apply.diarypic.photo.entity.DiaryPhoto;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;

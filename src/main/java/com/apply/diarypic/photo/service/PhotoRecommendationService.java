@@ -2,7 +2,7 @@ package com.apply.diarypic.photo.service;
 
 import com.apply.diarypic.ai.dto.AiPhotoScoreRequestDto;
 import com.apply.diarypic.ai.service.AiServerService;
-import com.apply.diarypic.diary.entity.DiaryPhoto;
+import com.apply.diarypic.photo.entity.DiaryPhoto;
 import com.apply.diarypic.photo.repository.PhotoRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

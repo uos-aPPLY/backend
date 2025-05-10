@@ -7,7 +7,7 @@ import com.apply.diarypic.album.repository.AlbumRepository;
 import com.apply.diarypic.album.repository.DiaryAlbumRepository;
 import com.apply.diarypic.diary.dto.DiaryResponse;
 import com.apply.diarypic.diary.entity.Diary;
-import com.apply.diarypic.diary.entity.DiaryPhoto;
+import com.apply.diarypic.photo.entity.DiaryPhoto;
 import com.apply.diarypic.user.entity.User;
 import com.apply.diarypic.user.repository.UserRepository;
 import jakarta.persistence.EntityNotFoundException;

@@ -2,6 +2,7 @@ package com.apply.diarypic.user.service;
 
 import com.apply.diarypic.global.security.jwt.JwtUtils;
 import com.apply.diarypic.keyword.service.KeywordService;
+import com.apply.diarypic.terms.service.TermsService;
 import com.apply.diarypic.user.dto.AuthRequest;
 import com.apply.diarypic.user.dto.AuthResponse;
 import com.apply.diarypic.user.dto.UserInfoResponse;
@@ -23,6 +24,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final JwtUtils jwtUtils;
     private final KeywordService keywordService; // KeywordService 주입 확인
+    private final TermsService termsService;
 
     @Transactional
     public AuthResponse authenticate(AuthRequest req) {
@@ -90,6 +92,8 @@ public class AuthService {
                     // 신규 사용자에게 초기 추천 키워드 생성
                     keywordService.createInitialRecommendedKeywordsForUser(savedNewUser);
                     log.info("✅ 사용자 ID {} 에게 초기 추천 키워드 생성 완료.", savedNewUser.getId());
+                    termsService.initializeTermsAndCreateAgreementsForNewUser(savedNewUser);
+                    log.info("✅ 사용자 ID {} 에게 초기 약관 동의 레코드(미동의 상태) 생성 시도 완료.", savedNewUser.getId());
                     return savedNewUser; // 이미 저장된 newUser를 반환해야 중복 저장을 피할 수 있습니다. (기존 코드에서 userRepository.save(newUser)가 두 번 호출될 수 있는 구조였음)
                 });
 

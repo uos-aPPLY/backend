@@ -10,9 +10,9 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AiPhotoScoreRequestDto {
-    private Long id; // 사진의 DB PK. AI 서버의 PhotoInput.id 와 타입 매칭 주의 (AI서버는 int or str)
+    private Long id;
     private String photoUrl;
-    private String shootingDateTime; // 예: "2025-05-09T14:30:00" (ISO 8601)
-    private String detailedAddress;
+    private String shootingDateTime;
+    private String detailedAddress; // <<-- countryName, adminAreaLevel1, locality를 조합하여 채움
     private boolean isMandatory;
 }

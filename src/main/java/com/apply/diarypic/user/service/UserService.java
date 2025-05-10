@@ -1,7 +1,7 @@
 package com.apply.diarypic.user.service;
 
 import com.apply.diarypic.diary.entity.Diary;
-import com.apply.diarypic.photo.entity.DiaryPhoto;
+import com.apply.diarypic.diary.entity.DiaryPhoto;
 import com.apply.diarypic.diary.repository.DiaryRepository;
 import com.apply.diarypic.global.s3.S3Uploader;
 import com.apply.diarypic.keyword.repository.KeywordRepository;

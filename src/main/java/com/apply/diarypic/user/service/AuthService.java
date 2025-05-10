@@ -22,7 +22,7 @@ public class AuthService {
     private final SocialUserInfoService socialUserInfoService;
     private final UserRepository userRepository;
     private final JwtUtils jwtUtils;
-    private final KeywordService keywordService;
+    private final KeywordService keywordService; // KeywordService 주입 확인
 
     @Transactional
     public AuthResponse authenticate(AuthRequest req) {
@@ -30,33 +30,48 @@ public class AuthService {
         Map<String, Object> userInfoMap = switch (req.provider().toLowerCase()) {
             case "kakao" -> socialUserInfoService.getKakaoUserInfo(req.accessToken());
             case "google" -> socialUserInfoService.getGoogleUserInfo(req.accessToken());
+            case "naver" -> socialUserInfoService.getNaverUserInfo(req.accessToken());
             default -> throw new IllegalArgumentException("지원하지 않는 provider: " + req.provider());
         };
 
         // 2. 사용자 고유 ID 및 소셜 프로필 닉네임 추출
-        String snsUserId = switch (req.provider().toLowerCase()) {
-            case "kakao" -> String.valueOf(userInfoMap.get("id"));
-            case "google" -> (String) userInfoMap.get("sub");
-            default -> throw new IllegalStateException("Provider 처리 오류");
-        };
+        String snsUserId = null;
+        String socialNickname = null;
 
-        String socialNickname = null; // 소셜 플랫폼에서 가져온 닉네임
-        if ("kakao".equalsIgnoreCase(req.provider())) {
-            Map<String, Object> properties = (Map<String, Object>) userInfoMap.get("properties");
-            if (properties != null) {
-                socialNickname = (String) properties.get("nickname");
-            }
-        } else if ("google".equalsIgnoreCase(req.provider())) {
-            socialNickname = (String) userInfoMap.get("name");
+        switch (req.provider().toLowerCase()) {
+            case "kakao":
+                snsUserId = String.valueOf(userInfoMap.get("id"));
+                Map<String, Object> properties = (Map<String, Object>) userInfoMap.get("properties");
+                if (properties != null) {
+                    socialNickname = (String) properties.get("nickname");
+                }
+                break;
+            case "google":
+                snsUserId = (String) userInfoMap.get("sub");
+                socialNickname = (String) userInfoMap.get("name");
+                break;
+            case "naver": // 네이버 케이스 추가
+                snsUserId = (String) userInfoMap.get("id"); // 네이버는 'id' 필드를 사용
+                socialNickname = (String) userInfoMap.get("nickname"); // 네이버는 'nickname' 또는 'name' 필드를 사용 (앱 설정에 따라 확인)
+                if (socialNickname == null || socialNickname.isBlank()) {
+                    socialNickname = (String) userInfoMap.get("name"); // 'nickname'이 없으면 'name'을 시도
+                }
+                break;
+            default:
+                throw new IllegalStateException("Provider 처리 오류");
         }
 
         // 소셜 닉네임이 없거나 비어있으면 기본값 생성
         if (socialNickname == null || socialNickname.isBlank()) {
-            socialNickname = req.provider() + "_" + snsUserId.substring(0, Math.min(snsUserId.length(), 6));
+            socialNickname = req.provider() + "_" + (snsUserId != null ? snsUserId.substring(0, Math.min(snsUserId.length(), 6)) : "user");
+        }
+        if (snsUserId == null) {
+            throw new IllegalStateException("snsUserId를 추출할 수 없습니다.");
         }
 
+
         // 3. DB에서 사용자 조회 또는 생성
-        final String finalProvider = req.provider();
+        final String finalProvider = req.provider().toLowerCase(); // 일관성을 위해 소문자로 처리
         final String finalSnsUserId = snsUserId;
         final String finalSocialNicknameForNewUser = socialNickname;
 
@@ -68,13 +83,14 @@ public class AuthService {
                             .snsProvider(finalProvider)
                             .snsUserId(finalSnsUserId)
                             .nickname(finalSocialNicknameForNewUser)
-                            .writingStylePrompt("기본 말투입니다.") // 기본값 설정
-                            .alarmEnabled(false) // 기본값 설정
+                            .writingStylePrompt("다정하고 친절한 말투로 일기를 작성해줘.") // 기본 말투 프롬프트 (기존 "기본 말투입니다." 에서 변경 가능)
+                            .alarmEnabled(false)
                             .build();
                     User savedNewUser = userRepository.save(newUser);
+                    // 신규 사용자에게 초기 추천 키워드 생성
                     keywordService.createInitialRecommendedKeywordsForUser(savedNewUser);
                     log.info("✅ 사용자 ID {} 에게 초기 추천 키워드 생성 완료.", savedNewUser.getId());
-                    return userRepository.save(newUser);
+                    return savedNewUser; // 이미 저장된 newUser를 반환해야 중복 저장을 피할 수 있습니다. (기존 코드에서 userRepository.save(newUser)가 두 번 호출될 수 있는 구조였음)
                 });
 
         log.info("👤 사용자 인증 성공: userId={}, provider={}, snsUserId={}, nickname={}",

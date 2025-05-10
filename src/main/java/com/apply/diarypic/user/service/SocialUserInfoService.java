@@ -57,4 +57,28 @@ public class SocialUserInfoService {
                 .bodyToMono(Map.class)
                 .block();
     }
+
+    public Map<String, Object> getNaverUserInfo(String accessToken) {
+        Map<String, Object> responseMap = webClient.get()
+                .uri("https://openapi.naver.com/v1/nid/me") // 네이버 사용자 정보 요청 URI
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .retrieve()
+                .onStatus(status -> status.is4xxClientError() || status.is5xxServerError(),
+                        clientResponse -> clientResponse.bodyToMono(String.class)
+                                .flatMap(errorBody -> {
+                                    log.error("Naver API 에러: status={}, body={}", clientResponse.statusCode(), errorBody);
+                                    if (clientResponse.statusCode() == HttpStatus.UNAUTHORIZED || clientResponse.statusCode() == HttpStatus.FORBIDDEN) {
+                                        return Mono.error(new BadCredentialsException("유효하지 않은 네이버 토큰입니다."));
+                                    }
+                                    return Mono.error(new RuntimeException("네이버 API 호출 실패: " + clientResponse.statusCode()));
+                                }))
+                .bodyToMono(Map.class)
+                .block(); // block()은 동기적으로 결과를 기다립니다. 비동기 처리를 원한다면 다른 방식을 고려해야 합니다.
+
+        // 네이버 응답은 response 필드 내에 실제 사용자 정보가 있음
+        if (responseMap != null && responseMap.containsKey("response")) {
+            return (Map<String, Object>) responseMap.get("response");
+        }
+        throw new RuntimeException("네이버 사용자 정보를 가져오는데 실패했습니다. 응답 형식 불일치.");
+    }
 }

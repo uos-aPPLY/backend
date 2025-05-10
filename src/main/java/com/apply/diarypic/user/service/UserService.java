@@ -1,5 +1,6 @@
 package com.apply.diarypic.user.service;
 
+import com.apply.diarypic.album.repository.AlbumRepository;
 import com.apply.diarypic.diary.entity.Diary;
 import com.apply.diarypic.photo.entity.DiaryPhoto;
 import com.apply.diarypic.diary.repository.DiaryRepository;
@@ -26,6 +27,7 @@ public class UserService {
     private final KeywordRepository keywordRepository;
     private final UserTermsAgreementRepository userTermsAgreementRepository;
     private final S3Uploader s3Uploader;
+    private final AlbumRepository albumRepository;
 
     public User getUserById(Long userId) {
         return userRepository.findById(userId)
@@ -80,6 +82,7 @@ public class UserService {
         }
 
         // 2) DB에서 User 삭제 (cascade 옵션에 따라 Diary/Photo가 함께 삭제)
+        albumRepository.deleteAllByUser(user);
         userTermsAgreementRepository.deleteAllByUser(user);
         keywordRepository.deleteAllByUser(user);
         diaryRepository.deleteAll(diaries);

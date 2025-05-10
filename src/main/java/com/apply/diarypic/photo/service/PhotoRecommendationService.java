@@ -2,12 +2,13 @@ package com.apply.diarypic.photo.service;
 
 import com.apply.diarypic.ai.dto.AiPhotoScoreRequestDto;
 import com.apply.diarypic.ai.service.AiServerService;
-import com.apply.diarypic.photo.entity.DiaryPhoto;
+import com.apply.diarypic.diary.entity.DiaryPhoto;
 import com.apply.diarypic.photo.repository.PhotoRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils; // StringUtils 임포트
 import reactor.core.publisher.Mono;
 
 import java.time.format.DateTimeFormatter;
@@ -17,6 +18,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream; // Stream 임포트
 
 @Service
 @RequiredArgsConstructor
@@ -49,34 +51,40 @@ public class PhotoRecommendationService {
                         .collect(Collectors.toList());
 
         List<AiPhotoScoreRequestDto> photosToScore = userPhotos.stream()
-                .map(photo -> new AiPhotoScoreRequestDto(
-                        photo.getId(),
-                        photo.getPhotoUrl(),
-                        photo.getShootingDateTime() != null ? photo.getShootingDateTime().format(ISO_LOCAL_DATE_TIME_FORMATTER) : null,
-                        photo.getDetailedAddress(),
-                        validMandatoryPhotoIds.contains(photo.getId())
-                ))
+                .map(photo -> {
+                    // DiaryPhoto의 countryName, adminAreaLevel1, locality를 조합하여 주소 문자열 생성
+                    String combinedAddress = Stream.of(photo.getLocality(), photo.getAdminAreaLevel1(), photo.getCountryName())
+                            .filter(StringUtils::hasText)
+                            .collect(Collectors.joining(", "));
+                    if (!StringUtils.hasText(combinedAddress)) {
+                        combinedAddress = null; // 모든 정보가 없으면 null
+                    }
+
+                    return new AiPhotoScoreRequestDto(
+                            photo.getId(),
+                            photo.getPhotoUrl(),
+                            photo.getShootingDateTime() != null ? photo.getShootingDateTime().format(ISO_LOCAL_DATE_TIME_FORMATTER) : null,
+                            combinedAddress, // 조합된 주소 전달
+                            validMandatoryPhotoIds.contains(photo.getId())
+                    );
+                })
                 .collect(Collectors.toList());
 
         if (photosToScore.isEmpty() && !validMandatoryPhotoIds.isEmpty()) {
-            // AI에 보낼 사진은 없지만 필수 사진은 있는 경우, 필수 사진만 반환
             return new ArrayList<>(validMandatoryPhotoIds);
         }
         if (photosToScore.isEmpty()){
             return Collections.emptyList();
         }
 
-
-        // AI 서버에 추천 요청
         Mono<List<Long>> recommendedPhotoIdsMono = aiServerService.requestPhotoRecommendation(photosToScore);
-        List<Long> aiRecommendedIds = recommendedPhotoIdsMono.block(); // 테스트를 위해 block, 실제로는 비동기 처리
+        List<Long> aiRecommendedIds = recommendedPhotoIdsMono.block();
 
         if (aiRecommendedIds == null) {
             log.warn("AI server returned null for photo recommendation for user {}. Returning mandatory photos only or empty.", userId);
             return validMandatoryPhotoIds.isEmpty() ? Collections.emptyList() : new ArrayList<>(validMandatoryPhotoIds);
         }
 
-        // 최종 결과 조합: 필수 사진 + AI 추천 사진 (중복 제거, 최대 9장)
         Set<Long> finalSelection = new HashSet<>(validMandatoryPhotoIds);
         finalSelection.addAll(aiRecommendedIds);
 

@@ -12,7 +12,7 @@ import lombok.Setter;
 public class ImageInfoDto {
     private String photoUrl;
     private String shootingDateTime; // 예: "2025-05-09T14:30:00"
-    private String detailedAddress;
+    private String detailedAddress;  // <<-- countryName, adminAreaLevel1, locality를 조합하여 채움
     private String keyword;
     private int sequence;
 }

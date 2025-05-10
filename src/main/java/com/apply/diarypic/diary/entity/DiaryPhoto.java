@@ -1,6 +1,5 @@
-package com.apply.diarypic.photo.entity;
+package com.apply.diarypic.diary.entity;
 
-import com.apply.diarypic.diary.entity.Diary;
 import com.apply.diarypic.keyword.entity.PhotoKeyword;
 import jakarta.persistence.*;
 import lombok.*;
@@ -26,12 +25,17 @@ public class DiaryPhoto {
 
     private LocalDateTime shootingDateTime;
 
-    private String location;
+    @Column(length = 100)
+    private String countryName;
 
-    @Column(name = "detailed_address")
-    private String detailedAddress;
+    @Column(length = 100)
+    private String adminAreaLevel1;
 
-    @Setter
+    @Column(length = 100)
+    private String locality;
+
+    private String location; // GPS 좌표 문자열
+
     private Integer sequence;
 
     @Column(nullable = false, updatable = false)
@@ -40,7 +44,6 @@ public class DiaryPhoto {
     @Column(nullable = false)
     private Long userId;
 
-    @Setter
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "diary_id")
     private Diary diary;

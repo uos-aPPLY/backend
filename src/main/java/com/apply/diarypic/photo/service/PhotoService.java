@@ -1,6 +1,6 @@
 package com.apply.diarypic.photo.service;
 
-import com.apply.diarypic.photo.entity.DiaryPhoto;
+import com.apply.diarypic.diary.entity.DiaryPhoto;
 import com.apply.diarypic.global.geocoding.GeocodingService;
 import com.apply.diarypic.global.s3.S3Uploader;
 import com.apply.diarypic.photo.repository.PhotoRepository;
@@ -17,65 +17,70 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
 import java.time.LocalDateTime;
+import java.time.ZoneId; // ZoneId 임포트
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor // final 필드에 대한 생성자 자동 생성
+@RequiredArgsConstructor
 public class PhotoService {
 
     private final S3Uploader s3Uploader;
     private final PhotoRepository photoRepository;
-    private final GeocodingService geocodingService; // GeocodingService 주입
+    private final GeocodingService geocodingService;
 
     @Transactional
     public String upload(MultipartFile file, Long userId) {
         try {
-            // 1. S3에 업로드
-            String url = s3Uploader.upload(file, "photos");
+            String s3Url = s3Uploader.upload(file, "photos");
 
-            // 2. EXIF 메타데이터 파싱
             LocalDateTime shootingDateTime = null;
-            String location = null; // "위도,경도" 형식의 문자열
-            String detailedAddress = null; // 변환된 상세 주소
+            String locationString = null; // 위도,경도 문자열
+            String countryName = null;
+            String adminAreaLevel1 = null;
+            String locality = null;
 
             try (InputStream is = file.getInputStream()) {
                 Metadata metadata = ImageMetadataReader.readMetadata(is);
                 ExifSubIFDDirectory exifDir = metadata.getFirstDirectoryOfType(ExifSubIFDDirectory.class);
                 if (exifDir != null && exifDir.getDateOriginal() != null) {
-                    shootingDateTime = exifDir.getDateOriginal()
-                            .toInstant()
-                            .atZone(java.time.ZoneId.systemDefault())
+                    shootingDateTime = exifDir.getDateOriginal().toInstant()
+                            .atZone(ZoneId.systemDefault()) // 사용자 시스템 시간대 사용
                             .toLocalDateTime();
                 }
                 GpsDirectory gpsDir = metadata.getFirstDirectoryOfType(GpsDirectory.class);
                 if (gpsDir != null) {
                     GeoLocation geo = gpsDir.getGeoLocation();
                     if (geo != null && !geo.isZero()) {
-                        location = geo.getLatitude() + "," + geo.getLongitude();
-                        // Geocoding API 호출하여 상세 주소 가져오기
-                        detailedAddress = geocodingService.getAddressFromCoordinates(geo.getLatitude(), geo.getLongitude());
+                        locationString = geo.getLatitude() + "," + geo.getLongitude();
+                        GeocodingService.ParsedAddress parsedAddress = geocodingService.getParsedAddressFromCoordinates(geo.getLatitude(), geo.getLongitude());
+                        if (parsedAddress != null) {
+                            countryName = parsedAddress.getCountryName();
+                            adminAreaLevel1 = parsedAddress.getAdminAreaLevel1();
+                            locality = parsedAddress.getLocality();
+                        }
                     }
                 }
             } catch (Exception e) {
                 log.warn("EXIF 메타데이터 파싱 또는 주소 변환 실패: 파일명={}, 오류={}", file.getOriginalFilename(), e.getMessage());
             }
 
-            // 3. DB에 저장
             DiaryPhoto diaryPhoto = DiaryPhoto.builder()
-                    .photoUrl(url)
+                    .photoUrl(s3Url)
                     .userId(userId)
                     .shootingDateTime(shootingDateTime)
-                    .location(location)
-                    .detailedAddress(detailedAddress) // 상세 주소 추가
-                    .createdAt(LocalDateTime.now())
+                    .location(locationString) // 원본 GPS 좌표 문자열 저장
+                    .countryName(countryName)
+                    .adminAreaLevel1(adminAreaLevel1)
+                    .locality(locality)
+                    // .detailedAddress() 필드 제거됨
+                    .createdAt(LocalDateTime.now()) // 명시적 설정
                     .build();
             photoRepository.save(diaryPhoto);
 
-            return url;
+            return s3Url;
         } catch (Exception e) {
-            // S3 업로드 자체의 실패 등 더 큰 범위의 예외 처리
             log.error("파일 업로드 또는 메타데이터 저장 실패: {}", e.getMessage(), e);
             throw new RuntimeException("파일 업로드 또는 메타데이터 저장 실패", e);
         }

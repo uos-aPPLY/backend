@@ -19,7 +19,7 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private String snsProvider;   // 'kakao', 'google'
+    private String snsProvider;   // 'kakao'
     private String snsUserId;     // SNS 제공자 내 유저 ID (PK 아님)
 
     @Setter

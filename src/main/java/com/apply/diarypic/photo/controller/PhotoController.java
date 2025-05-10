@@ -38,48 +38,37 @@ public class PhotoController {
     @Operation(summary = "사진 여러 장 업로드 (S3 및 DB 임시 저장, 프론트 제공 메타데이터 사용)")
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<List<PhotoResponse>> uploadPhotos(
-            @CurrentUser UserPrincipal user,
+            @CurrentUser UserPrincipal user,          // 인증 주체
             @RequestPart("files") List<MultipartFile> files,
-        /* ▲ 이미지들
-           ▼ metadata 파트를 MultipartFile 로 받는다 */
-            @RequestPart("metadata") MultipartFile metadataFile
+            @RequestPart("metadata") String metadataJson   // ← 문자열로 받음
     ) {
-        // 0) 기본 검증
-        if (files.isEmpty() || metadataFile == null || metadataFile.isEmpty()) {
+        if (files.isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
 
-        // 1) metadataFile → JSON 문자열
-        String metadataJson;
-        try {
-            metadataJson = new String(metadataFile.getBytes(), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            log.error("metadata 파일 읽기 실패: {}", e.getMessage(), e);
-            return ResponseEntity.badRequest().build();
-        }
-
-        // 2) JSON → DTO 리스트
+        /* 1. JSON → DTO 리스트 */
         List<PhotoUploadItemDto> metadataList;
         try {
-            metadataList = objectMapper.readValue(
+            metadataList = new ObjectMapper().readValue(
                     metadataJson,
                     new TypeReference<List<PhotoUploadItemDto>>() {}
             );
         } catch (Exception e) {
-            log.error("metadata JSON 파싱 실패: {}", e.getMessage(), e);
+            log.error("metadata 파싱 실패: {}", e.getMessage(), e);
             return ResponseEntity.badRequest().build();
         }
 
-        // 3) 파일·메타데이터 개수 일치 확인
+        /* 2. 개수 일치 확인 */
         if (files.size() != metadataList.size()) {
             return ResponseEntity.badRequest().build();
         }
 
-        // 4) 서비스 호출
-        List<PhotoResponse> result =
-                photoService.uploadPhotosWithMetadata(files, metadataList, user.getUserId());
+        /* 3. 서비스 호출 */
+        List<PhotoResponse> result = photoService.uploadPhotosWithMetadata(
+                files, metadataList, user.getUserId());
 
         return ResponseEntity.ok(result);
     }
+
 
 }

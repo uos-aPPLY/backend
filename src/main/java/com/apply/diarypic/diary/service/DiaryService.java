@@ -4,6 +4,8 @@ import com.apply.diarypic.ai.dto.AiDiaryGenerateRequestDto;
 import com.apply.diarypic.ai.dto.AiDiaryResponseDto;
 import com.apply.diarypic.ai.dto.ImageInfoDto;
 import com.apply.diarypic.ai.service.AiServerService;
+import com.apply.diarypic.album.repository.AlbumRepository;
+import com.apply.diarypic.album.repository.DiaryAlbumRepository;
 import com.apply.diarypic.album.service.AlbumService;
 import com.apply.diarypic.diary.dto.AiDiaryCreateRequest;
 import com.apply.diarypic.diary.dto.DiaryRequest;
@@ -57,6 +59,8 @@ public class DiaryService {
     private final AlbumService albumService;
 
     private static final DateTimeFormatter ISO_LOCAL_DATE_TIME_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
+    private final AlbumRepository albumRepository;
+    private final DiaryAlbumRepository diaryAlbumRepository;
     // private static final DateTimeFormatter ISO_DATE_FORMATTER = DateTimeFormatter.ISO_DATE;
 
     /**
@@ -274,6 +278,8 @@ public class DiaryService {
         diary.getDiaryPhotos().forEach(photo -> {
             log.warn("Diary deletion: S3 사진 삭제 로직이 임시로 비활성화되었습니다. URL: {}", photo.getPhotoUrl());
         });
+
+        diaryAlbumRepository.deleteByDiary(diary);
         diaryRepository.delete(diary);
         log.info("일기 ID {} 삭제 완료.", diaryId);
     }

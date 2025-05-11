@@ -1,4 +1,3 @@
-// com.apply.diarypic.terms.service.TermsService.java
 package com.apply.diarypic.terms.service;
 
 import com.apply.diarypic.terms.dto.TermsDto;
@@ -17,8 +16,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Collections; // 추가
 import java.util.List;
 import java.util.Map;
+import java.util.Objects; // 추가
 import java.util.stream.Collectors;
 
 @Service
@@ -29,93 +30,62 @@ public class TermsService {
 
     private final TermsRepository termsRepository;
     private final UserTermsAgreementRepository userTermsAgreementRepository;
-    private final UserRepository userRepository; // UserRepository가 이미 주입되어 있다고 가정
-
-    // DataInitializer의 createTermIfNotExists와 유사한 로직 (TermsService 내부에서만 사용)
-    private Terms createTermIfNotExistsInternal(TermsType termsType, int version, String title, String content, boolean required) {
-        return termsRepository.findByTermsTypeAndVersion(termsType, version)
-                .orElseGet(() -> {
-                    Terms term = Terms.builder()
-                            .termsType(termsType)
-                            .version(version)
-                            .title(title)
-                            .content(content)
-                            .required(required)
-                            .effectiveDate(LocalDateTime.now()) // 생성 시점을 기준으로 발효
-                            .build();
-                    Terms savedTerm = termsRepository.save(term);
-                    log.info("약관 '{}' (type: {}, v{})이(가) DB에 저장되었습니다.", title, termsType.name(), version);
-                    return savedTerm;
-                });
-    }
-
-    @Transactional
-    public void initializeTermsAndCreateAgreementsForNewUser(User user) {
-        log.info("신규 사용자 {}를 위한 약관 마스터 데이터 확인/생성 및 UserTermsAgreement 초기화 시작...", user.getId());
-
-        // 1. 약관 마스터 데이터(Terms) 생성 또는 확인 (DataInitializer의 역할 수행)
-        //    각 약관 타입에 대해 최신 버전이 없으면 생성하도록 할 수 있으나, 여기서는 고정된 초기 버전을 생성합니다.
-        //    실제 운영에서는 버전 관리가 더 중요합니다.
-        Terms ageConfirmTerm = createTermIfNotExistsInternal(TermsType.AGE_CONFIRMATION, 1, TermsType.AGE_CONFIRMATION.getDescription(), "본 서비스는 만 14세 이상 사용자만 이용 가능합니다. 동의하시면 만 14세 이상임을 확인하는 것입니다.", true);
-        Terms serviceTermsTerm = createTermIfNotExistsInternal(TermsType.SERVICE_TERMS, 1, TermsType.SERVICE_TERMS.getDescription(), "제1조 (목적) ... (실제 약관 내용)", true);
-        Terms privacyPolicyTerm = createTermIfNotExistsInternal(TermsType.PRIVACY_POLICY, 1, TermsType.PRIVACY_POLICY.getDescription(), "제1조 (개인정보의 처리 목적) ... (실제 약관 내용)", true);
-        Terms marketingOptInTerm = createTermIfNotExistsInternal(TermsType.MARKETING_OPT_IN, 1, TermsType.MARKETING_OPT_IN.getDescription(), "새로운 소식, 이벤트 및 프로모션 정보를 이메일 또는 푸시 알림으로 받아보시겠습니까?", false);
-
-        // 생성(또는 조회)된 Terms 객체 리스트 (여기서는 개별 객체로 바로 사용)
-        List<Terms> allInitializedTerms = List.of(ageConfirmTerm, serviceTermsTerm, privacyPolicyTerm, marketingOptInTerm);
-
-        // 2. 해당 사용자에 대한 UserTermsAgreement 레코드 생성 (미동의 상태)
-        for (Terms term : allInitializedTerms) {
-            if (term != null) { // createTermIfNotExistsInternal이 항상 객체를 반환하므로 null 체크는 사실상 불필요
-                // 이미 해당 사용자의 약관 동의 정보가 있는지 확인 (신규 사용자이므로 보통 없음)
-                if (!userTermsAgreementRepository.findByUserAndTermsId(user, term.getId()).isPresent()) {
-                    UserTermsAgreement initialAgreement = UserTermsAgreement.builder()
-                            .user(user)
-                            .terms(term)
-                            .agreed(false) // 기본적으로 미동의 상태
-                            .agreedAt(LocalDateTime.now()) // 또는 null로 두고 실제 동의 시 설정
-                            .build();
-                    userTermsAgreementRepository.save(initialAgreement);
-                    log.info("신규 사용자 {}를 위해 약관 '{}'에 대한 초기 UserTermsAgreement 레코드 생성 (미동의 상태)", user.getId(), term.getTitle());
-                } else {
-                    log.info("신규 사용자 {}는 이미 약관 '{}'에 대한 UserTermsAgreement 레코드가 존재합니다.", user.getId(), term.getTitle());
-                }
-            }
-        }
-        log.info("신규 사용자 {}를 위한 약관 마 litros터 데이터 확인/생성 및 UserTermsAgreement 초기화 완료.", user.getId());
-    }
+    private final UserRepository userRepository;
 
 
-    // --- 기존 TermsService 메소드들 ---
     public List<TermsDto> getLatestTermsForUser(Long userId) {
+        log.info("[TermsService] getLatestTermsForUser 시작 - userId: {}", userId);
+
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new EntityNotFoundException("User not found with id: " + userId));
+                .orElseThrow(() -> {
+                    log.error("[TermsService] User not found with id: {}", userId);
+                    return new EntityNotFoundException("User not found with id: " + userId);
+                });
+        log.info("[TermsService] 사용자 조회 완료: userId={}", user.getId());
 
         List<Terms> latestTerms = termsRepository.findLatestActiveTerms();
+        if (latestTerms.isEmpty()) { // DataInitializer가 실행되지 않았거나 약관이 없는 경우
+            log.warn("[TermsService] 표시할 최신 약관이 없습니다. DB에 약관 마스터 데이터가 있는지 확인하세요.");
+            return Collections.emptyList();
+        }
+        log.info("[TermsService] 최신 약관 목록(latestTerms) 조회 완료. 개수: {}", latestTerms.size());
+
+        // 사용자가 동의한(agreed=true) 약관 기록만 가져옴
         List<UserTermsAgreement> userAgreements = userTermsAgreementRepository.findByUserAndAgreedTrue(user);
+        log.info("[TermsService] 사용자 동의 약관 목록(userAgreements) 조회 완료. 개수: {}", userAgreements.size());
 
         Map<Long, Boolean> agreedTermsMap = userAgreements.stream()
-                .collect(Collectors.toMap(uta -> uta.getTerms().getId(), UserTermsAgreement::isAgreed));
+                .filter(uta -> uta.getTerms() != null) // 방어 코드
+                .collect(Collectors.toMap(
+                        uta -> uta.getTerms().getId(),
+                        UserTermsAgreement::isAgreed,
+                        (existing, replacement) -> existing // 혹시 모를 중복 키 처리 (이론상 isAgreed=true 조건으론 발생 안 함)
+                ));
+        log.info("[TermsService] 동의된 약관 Map 생성 완료. Map 크기: {}", agreedTermsMap.size());
 
-        return latestTerms.stream()
-                .map(terms -> TermsDto.builder()
-                        .id(terms.getId())
-                        .termsType(terms.getTermsType().name())
-                        .title(terms.getTitle())
-                        .content(terms.getContent())
-                        .version(terms.getVersion())
-                        .required(terms.isRequired())
-                        .effectiveDate(terms.getEffectiveDate())
-                        .agreed(agreedTermsMap.getOrDefault(terms.getId(), false))
-                        .build())
+        List<TermsDto> termsDtoList = latestTerms.stream()
+                .map(term -> {
+                    if (term == null || term.getTermsType() == null) { // 방어 코드
+                        log.error("[TermsService] Terms 객체 또는 TermsType이 null입니다. term: {}", term);
+                        return null;
+                    }
+                    return TermsDto.builder()
+                            .id(term.getId())
+                            .termsType(term.getTermsType().name())
+                            .title(term.getTitle())
+                            .content(term.getContent())
+                            .version(term.getVersion())
+                            .required(term.isRequired())
+                            .effectiveDate(term.getEffectiveDate())
+                            .agreed(agreedTermsMap.getOrDefault(term.getId(), false)) // 동의 기록 없으면 false
+                            .build();
+                })
+                .filter(Objects::nonNull) // null DTO 제거
                 .collect(Collectors.toList());
-    }
 
-    public TermsDto getTermsDetails(TermsType termsType, int version) {
-        Terms terms = termsRepository.findByTermsTypeAndVersion(termsType, version)
-                .orElseThrow(() -> new EntityNotFoundException(
-                        "Terms not found with type: " + termsType + " and version: " + version));
-        return TermsDto.fromEntity(terms);
+        log.info("[TermsService] TermsDto 리스트 변환 완료. 결과 개수: {}", termsDtoList.size());
+        log.info("[TermsService] getLatestTermsForUser 종료 - userId: {}", userId);
+        return termsDtoList;
     }
 
     @Transactional
@@ -127,27 +97,31 @@ public class TermsService {
             Terms terms = termsRepository.findById(item.getTermsId())
                     .orElseThrow(() -> new EntityNotFoundException("Terms not found with id: " + item.getTermsId()));
 
+            // 최신 버전 약관인지 다시 한번 확인 (클라이언트가 이전 버전 ID를 보낼 수도 있으므로)
             Terms latestVersionOfThisType = termsRepository.findFirstByTermsTypeOrderByVersionDesc(terms.getTermsType())
                     .orElseThrow(() -> new EntityNotFoundException("Cannot find latest version for terms type: " + terms.getTermsType()));
+
             if (!terms.getId().equals(latestVersionOfThisType.getId())) {
-                log.warn("Attempt to agree to an outdated terms version. User: {}, Terms ID: {}, Submitted Version: {}, Latest Version: {}",
+                log.warn("User {} attempted to agree to an outdated terms (ID: {}, Version: {}). Latest is Version: {}.",
                         userId, terms.getId(), terms.getVersion(), latestVersionOfThisType.getVersion());
-                throw new IllegalArgumentException("동의하려는 약관 '" + terms.getTitle() + "'이(가) 최신 버전이 아닙니다. 페이지를 새로고침 후 다시 시도해주세요.");
+                // 필요하다면 여기서 예외를 던지거나, 클라이언트가 반드시 최신 약관 ID를 보내도록 강제해야 함.
+                // 현재 로직은 클라이언트가 보낸 termsId에 해당하는 약관이 최신 버전이 아니면 예외를 던짐. (제공해주신 코드 유지)
+                throw new IllegalArgumentException("동의하려는 약관 '" + terms.getTitle() + "'이(가) 최신 버전(" + latestVersionOfThisType.getVersion() + ")이 아닙니다. 현재 버전: " + terms.getVersion());
             }
 
             UserTermsAgreement agreement = userTermsAgreementRepository.findByUserAndTermsId(user, terms.getId())
                     .orElseGet(() -> UserTermsAgreement.builder()
                             .user(user)
-                            .terms(terms)
+                            .terms(terms) // 동의하는 특정 버전의 약관
                             .build());
 
             agreement.setAgreed(item.getAgreed());
-            agreement.setAgreedAt(LocalDateTime.now());
+            agreement.setAgreedAt(LocalDateTime.now()); // 동의/철회 시각 업데이트
             userTermsAgreementRepository.save(agreement);
 
-            log.info("User {} {} terms '{}' (type: {}, version {}) at {}",
+            log.info("User {} {} terms '{}' (ID: {}, type: {}, version {}) at {}",
                     userId, item.getAgreed() ? "agreed to" : "revoked agreement for",
-                    terms.getTitle(), terms.getTermsType().name(), terms.getVersion(), agreement.getAgreedAt());
+                    terms.getTitle(), terms.getId(), terms.getTermsType().name(), terms.getVersion(), agreement.getAgreedAt());
         }
     }
 
@@ -155,34 +129,34 @@ public class TermsService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found with id: " + userId));
 
+        // DB에서 '현재 활성화된 & 필수인' 최신 버전 약관들만 가져옴
         List<Terms> latestRequiredTerms = termsRepository.findLatestActiveTerms().stream()
                 .filter(Terms::isRequired)
                 .toList();
 
         if (latestRequiredTerms.isEmpty()) {
-            return true;
+            log.info("[TermsService] 필수 약관이 설정되어 있지 않습니다. userId: {}", userId);
+            return true; // 필수 약관이 없으면 항상 true
         }
 
-        List<UserTermsAgreement> userAgreements = userTermsAgreementRepository.findByUserAndAgreedTrue(user);
-
-        Map<TermsType, Integer> agreedLatestVersionsMap = userAgreements.stream()
-                .filter(uta -> uta.getTerms().getEffectiveDate() != null && uta.getTerms().getEffectiveDate().isBefore(LocalDateTime.now()))
-                .collect(Collectors.toMap(
-                        uta -> uta.getTerms().getTermsType(),
-                        uta -> uta.getTerms().getVersion(),
-                        Integer::max
-                ));
+        // 해당 사용자가 '동의(agreed=true)'한 모든 약관 동의 기록을 가져옴
+        List<UserTermsAgreement> agreedUserAgreements = userTermsAgreementRepository.findByUserAndAgreedTrue(user);
 
         for (Terms requiredTerm : latestRequiredTerms) {
-            TermsType termsTypeKey = requiredTerm.getTermsType();
-            Integer agreedVersion = agreedLatestVersionsMap.get(termsTypeKey);
+            // 사용자가 동의한 기록 중에서 현재 필수 약관(ID 기준)과 일치하는 것이 있는지 확인
+            boolean hasAgreed = agreedUserAgreements.stream()
+                    .anyMatch(agreement -> agreement.getTerms().getId().equals(requiredTerm.getId()));
 
-            if (agreedVersion == null || agreedVersion < requiredTerm.getVersion()) {
-                log.warn("User {} has not agreed to the latest required terms: {} (v{}) or agreed to an older version (v{}).",
-                        userId, termsTypeKey.name(), requiredTerm.getVersion(), agreedVersion == null ? "N/A" : agreedVersion);
+            if (!hasAgreed) {
+                log.warn("[TermsService] User {} has not agreed to the required term: {} (ID: {}, v{})",
+                        userId, requiredTerm.getTermsType().name(), requiredTerm.getId(), requiredTerm.getVersion());
                 return false;
             }
         }
+
+        log.info("[TermsService] User {} has agreed to all required terms.", userId);
         return true;
     }
+
+    // getTermsDetails 메소드는 필요하다면 그대로 유지 (현재 제공된 코드에는 없음)
 }

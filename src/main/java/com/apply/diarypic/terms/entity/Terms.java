@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "terms")
 @Getter
-@Setter
+@Setter // displayOrder 등 설정 위해 Setter 유지
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
@@ -18,9 +18,9 @@ public class Terms {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Enumerated(EnumType.STRING) // Enum 타입으로 매핑
-    @Column(nullable = false, length = 50) // unique 제약은 (termsType, version) 복합으로 거는 것이 일반적
-    private TermsType termsType; // String 대신 TermsType Enum 사용
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 50)
+    private TermsType termsType;
 
     @Column(nullable = false, length = 255)
     private String title;
@@ -36,6 +36,9 @@ public class Terms {
     private boolean required;
 
     private LocalDateTime effectiveDate;
+
+    @Column(nullable = false)
+    private Integer displayOrder;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

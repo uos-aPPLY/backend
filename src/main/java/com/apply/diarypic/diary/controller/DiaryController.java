@@ -8,6 +8,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag; // Tag 어노테이션 추가
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -100,6 +102,21 @@ public class DiaryController {
                 diaryId,
                 request.getPhotoId()
         );
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "일기 내용 검색 (최신순, 페이징, 두 글자 이상)")
+    @GetMapping("/search")
+    public ResponseEntity<Page<DiaryResponse>> searchDiaries(
+            @CurrentUser UserPrincipal userPrincipal,
+            @Parameter(description = "검색할 키워드 (두 글자 이상)", required = true)
+            @RequestParam
+            @Size(min = 2, message = "검색어는 두 글자 이상 입력해주세요.")
+            String keyword,
+            @PageableDefault(size = 10, sort = "diaryDate", direction = Sort.Direction.DESC)
+            @Parameter(hidden = true) Pageable pageable) {
+
+        Page<DiaryResponse> response = diaryService.searchDiariesByContent(userPrincipal.getUserId(), keyword, pageable);
         return ResponseEntity.ok(response);
     }
 }

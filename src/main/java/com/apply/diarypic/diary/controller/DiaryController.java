@@ -123,4 +123,14 @@ public class DiaryController {
         return ResponseEntity.ok(response);
     }
 
+    @Operation(summary = "일기 내 사진 목록 전체 수정 (추가, 삭제, 순서 변경)")
+    @PatchMapping("/{diaryId}/photos") // Photo 컬렉션에 대한 변경
+    public ResponseEntity<DiaryResponse> updateDiaryPhotos(
+            @CurrentUser UserPrincipal userPrincipal,
+            @PathVariable Long diaryId,
+            @Valid @RequestBody DiaryPhotosUpdateRequest request) {
+        DiaryResponse response = diaryService.updateDiaryPhotos(userPrincipal.getUserId(), diaryId, request);
+        return ResponseEntity.ok(response);
+    }
+
 }

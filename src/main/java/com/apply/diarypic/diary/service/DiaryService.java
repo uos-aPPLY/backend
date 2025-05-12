@@ -34,11 +34,8 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator; // Comparator 임포트
-import java.util.List;
+import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -385,6 +382,118 @@ public class DiaryService {
         // 사진 관련 정보는 수정하지 않음
 
         return DiaryResponse.from(diaryRepository.save(diary));
+    }
+
+    @Transactional
+    public DiaryResponse updateDiaryPhotos(Long userId, Long diaryId, DiaryPhotosUpdateRequest request) {
+        Diary diary = diaryRepository.findById(diaryId)
+                .orElseThrow(() -> new EntityNotFoundException("일기를 찾을 수 없습니다. ID: " + diaryId));
+
+        if (!diary.getUser().getId().equals(userId)) {
+            throw new SecurityException("해당 일기에 대한 수정 권한이 없습니다.");
+        }
+
+        // --- 1. 요청된 사진 정보 준비 ---
+        List<PhotoAssignmentDto> requestedAssignments = request.getPhotos() == null ? new ArrayList<>() : request.getPhotos();
+        Set<Long> requestedPhotoIds = requestedAssignments.stream()
+                .map(PhotoAssignmentDto::getPhotoId)
+                .collect(Collectors.toSet());
+
+        // --- 2. 기존 사진 정보 및 삭제 처리 ---
+        List<DiaryPhoto> photosToDelete = new ArrayList<>();
+        List<DiaryPhoto> currentDiaryPhotos = new ArrayList<>(diary.getDiaryPhotos()); // 복사본 사용
+
+        String currentRepresentativePhotoUrl = diary.getRepresentativePhotoUrl();
+        Long currentRepresentativePhotoId = null;
+
+        // 현재 대표 사진 ID 찾기 (URL 기반 비교는 정확하지 않을 수 있으므로, ID를 찾도록 개선 가능하면 좋음)
+        // 여기서는 URL로 비교하지만, DiaryPhoto에 대표 사진 여부 플래그가 있거나,
+        // Diary 엔티티가 DiaryPhoto 객체를 직접 참조하면 더 명확합니다.
+        // 현재는 Diary.representativePhotoUrl 필드만 사용합니다.
+
+        for (DiaryPhoto existingPhoto : currentDiaryPhotos) {
+            if (!requestedPhotoIds.contains(existingPhoto.getId())) {
+                photosToDelete.add(existingPhoto);
+                if (existingPhoto.getPhotoUrl().equals(currentRepresentativePhotoUrl)) {
+                    diary.setRepresentativePhotoUrl(null); // 대표 사진이 삭제되면 null로 설정
+                }
+            }
+            if (existingPhoto.getPhotoUrl().equals(currentRepresentativePhotoUrl)) {
+                currentRepresentativePhotoId = existingPhoto.getId();
+            }
+        }
+
+        // 실제 삭제 처리 (DB + S3)
+        if (!photosToDelete.isEmpty()) {
+            for (DiaryPhoto photo : photosToDelete) {
+                // S3에서 실제 파일 삭제 (S3Uploader에 해당 기능 구현 필요)
+                // 예: s3Uploader.deleteFile(photo.getPhotoUrl()); // URL에서 파일 키를 추출하는 로직 필요
+                log.info("S3 파일 삭제 시도: {}", photo.getPhotoUrl()); // 실제 삭제 로직은 S3Uploader에 구현
+//                s3Uploader.deleteFileByUrl(photo.getPhotoUrl());
+
+
+                // PhotoKeyword는 DiaryPhoto의 cascade에 의해 자동 삭제될 수 있지만, 명시적 처리도 고려
+                // photoKeywordRepository.deleteAll(photo.getPhotoKeywords());
+                // photo.getPhotoKeywords().clear(); // 컬렉션 비우기
+            }
+            diary.getDiaryPhotos().removeAll(photosToDelete); // orphanRemoval=true에 의해 DB에서 삭제
+            // photoRepository.deleteAll(photosToDelete); // 직접 삭제도 가능
+        }
+
+        // --- 3. 추가 및 순서 변경 처리 ---
+        List<DiaryPhoto> newFinalDiaryPhotos = new ArrayList<>();
+        Map<Long, DiaryPhoto> existingPhotosMap = diary.getDiaryPhotos().stream()
+                .collect(Collectors.toMap(DiaryPhoto::getId, Function.identity()));
+
+        for (PhotoAssignmentDto assignment : requestedAssignments) {
+            DiaryPhoto photo = photoRepository.findById(assignment.getPhotoId())
+                    .orElseThrow(() -> new EntityNotFoundException("추가하려는 사진을 찾을 수 없습니다. ID: " + assignment.getPhotoId()));
+
+            if (!photo.getUserId().equals(userId)) {
+                throw new SecurityException("다른 사용자의 사진(ID: " + photo.getId() + ")을 일기에 추가할 수 없습니다.");
+            }
+
+            // 사진이 다른 일기에 이미 속해 있는지 확인 (선택적 로직)
+            if (photo.getDiary() != null && !photo.getDiary().getId().equals(diaryId)) {
+                throw new IllegalArgumentException("사진(ID: " + photo.getId() + ")은 이미 다른 일기에 속해 있습니다.");
+            }
+
+            photo.setDiary(diary);
+            photo.setSequence(assignment.getSequence());
+            newFinalDiaryPhotos.add(photo);
+            existingPhotosMap.remove(assignment.getPhotoId()); // 처리된 사진은 맵에서 제거
+        }
+
+        // 요청에는 없지만 기존 diary.getDiaryPhotos()에 남아있던 사진들은 삭제되었어야 함 (위 photosToDelete 로직에서 처리)
+        // 따라서 newFinalDiaryPhotos가 최종 목록이 됨
+        diary.getDiaryPhotos().clear();
+        diary.getDiaryPhotos().addAll(newFinalDiaryPhotos);
+
+
+        // --- 4. 새로운 대표 사진 설정 ---
+        if (request.getNewRepresentativePhotoId() != null) {
+            Long newRepPhotoId = request.getNewRepresentativePhotoId();
+            DiaryPhoto newRepPhoto = newFinalDiaryPhotos.stream()
+                    .filter(p -> p.getId().equals(newRepPhotoId))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("새로운 대표 사진 ID " + newRepPhotoId + "가 최종 사진 목록에 없습니다."));
+            diary.setRepresentativePhotoUrl(newRepPhoto.getPhotoUrl());
+        } else if (diary.getRepresentativePhotoUrl() == null && !newFinalDiaryPhotos.isEmpty()) {
+            // 기존 대표사진이 삭제되었고, 새 대표사진 지정이 없으며, 사진이 남아있다면 첫번째 사진을 대표로 (정책에 따라 다름)
+            // 또는 setInitialRepresentativePhoto(diary) 호출 (현재는 이 메소드가 sequence 기반으로 설정)
+            setInitialRepresentativePhoto(diary); // sequence가 가장 낮은 사진을 대표로 설정
+        }
+
+
+        // --- 5. 앨범 정보 업데이트 ---
+        // 사진 목록이 변경되었으므로, 연관된 앨범 정보도 업데이트 필요 (AlbumService에 위임)
+        if (albumService != null) { // albumService가 주입되었는지 확인
+            albumService.processDiaryAlbums(diary, diary.getDiaryPhotos());
+        }
+
+
+        Diary savedDiary = diaryRepository.save(diary);
+        return DiaryResponse.from(savedDiary);
     }
 
     @Transactional

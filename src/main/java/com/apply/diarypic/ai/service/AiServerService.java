@@ -46,7 +46,7 @@ public class AiServerService {
                 .doOnError(error -> log.error("Error during AI diary generation request: {}", error.getMessage()))
                 .onErrorResume(error -> {
                     log.error("Failed to generate diary from AI server. Error: {}", error.getMessage());
-                    return Mono.just(new AiDiaryResponseDto("AI 서버 오류로 일기를 생성할 수 없습니다.")); // 오류 메시지 포함 DTO
+                    return Mono.just(new AiDiaryResponseDto("AI 서버 오류로 일기를 생성할 수 없습니다.", null)); // 오류 메시지 포함 DTO
                 });
     }
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AiServerService.class);

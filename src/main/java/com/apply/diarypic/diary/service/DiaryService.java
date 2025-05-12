@@ -124,22 +124,23 @@ public class DiaryService {
         AiDiaryGenerateRequestDto aiRequest = new AiDiaryGenerateRequestDto(userWritingStyle, imageInfoForAi);
         AiDiaryResponseDto aiResponse = aiServerService.requestDiaryGeneration(aiRequest).block();
 
-        if (aiResponse == null || !StringUtils.hasText(aiResponse.getDiary_text())) {
+        if (aiResponse == null || !StringUtils.hasText(aiResponse.getDiary())) {
             throw new RuntimeException("AI 서버로부터 일기 내용을 생성하지 못했습니다.");
         }
-        String autoContent = aiResponse.getDiary_text();
+        String autoContent = aiResponse.getDiary();
+        String autoEmoji = aiResponse.getEmoji();
 
-        Diary diary = createAndSaveDiaryAndAlbums(user, autoContent, diaryDate, finalizedPhotoPayloads, userId, true);
+        Diary diary = createAndSaveDiaryAndAlbums(user, autoContent, autoEmoji, diaryDate, finalizedPhotoPayloads, userId, true);
         setInitialRepresentativePhoto(diary);
         return DiaryResponse.from(diaryRepository.save(diary));
     }
 
-    private Diary createAndSaveDiaryAndAlbums(User user, String content, LocalDate diaryDate, List<AiDiaryCreateRequest.FinalizedPhotoPayload> finalizedPhotoPayloads, Long userId, boolean isAiGenerated) {
+    private Diary createAndSaveDiaryAndAlbums(User user, String content, String emoji, LocalDate diaryDate, List<AiDiaryCreateRequest.FinalizedPhotoPayload> finalizedPhotoPayloads, Long userId, boolean isAiGenerated) {
         Diary diary = Diary.builder()
                 .user(user)
                 .content(content)
+                .emotionIcon(emoji)
                 .diaryDate(diaryDate)
-                .emotionIcon(isAiGenerated ? "🙂" : (finalizedPhotoPayloads.isEmpty() ? "✏️" : "📷"))
                 .isFavorited(false)
                 .status(isAiGenerated ? "미확인" : "확인")
                 .diaryPhotos(new ArrayList<>())
@@ -263,7 +264,7 @@ public class DiaryService {
             }
         }
 
-        Diary diary = createAndSaveDiaryAndAlbums(user, request.getContent(), diaryDate, photoPayloadsForManualDiary, userId, false);
+        Diary diary = createAndSaveDiaryAndAlbums(user, request.getContent(), request.getEmotionIcon(), diaryDate, photoPayloadsForManualDiary, userId, false);
         setInitialRepresentativePhoto(diary);
         return DiaryResponse.from(diaryRepository.save(diary));
     }

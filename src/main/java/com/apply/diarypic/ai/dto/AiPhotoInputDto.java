@@ -9,7 +9,7 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class AiDiaryResponseDto {
-    private String diary;
-    private String emoji;
+public class AiPhotoInputDto {
+    private String id;
+    private String photoUrl;
 }

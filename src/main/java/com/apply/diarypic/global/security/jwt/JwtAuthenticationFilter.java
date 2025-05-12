@@ -11,8 +11,10 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;   // ★
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -27,25 +29,44 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final UserRepository userRepository;
 
     @Override
+    protected boolean shouldNotFilterAsyncDispatch() {
+        return false;
+    }
+
+    @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
 
+        log.info("JwtFilter invoked, auth={}  URI={}",
+                SecurityContextHolder.getContext().getAuthentication(),
+                request.getRequestURI());
+
         String token = extractToken(request);
         if (token != null && jwtUtils.validateToken(token)) {
             Claims claims = jwtUtils.getClaims(token);
-            Long userId = Long.valueOf(claims.getSubject());
+            Long userId   = Long.valueOf(claims.getSubject());
             String provider = claims.get("provider", String.class);
 
             User user = userRepository.findById(userId)
                     .orElseThrow(() -> new IllegalArgumentException("사용자 정보 없음"));
 
-            UserPrincipal userPrincipal = new UserPrincipal(user.getId(), provider);
+            UserPrincipal principal = new UserPrincipal(user.getId(), provider);
             UsernamePasswordAuthenticationToken authentication =
-                    new UsernamePasswordAuthenticationToken(userPrincipal, null, userPrincipal.getAuthorities());
+                    new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
             authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
-            SecurityContextHolder.getContext().setAuthentication(authentication);
+            /* ▼▼ SecurityContext 를 두 군데 모두에 저장 ▼▼ */
+            SecurityContext context = SecurityContextHolder.createEmptyContext();
+            context.setAuthentication(authentication);
+            SecurityContextHolder.setContext(context);                                           // 기존 ThreadLocal
+            request.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY,
+                    context);                                                       // ★ async 디스패치용
+            /* ▲▲ ------------------------------------------------ ▲▲ */
+
+            log.debug("SecurityContext populated for user ID: {}", principal.getUserId());
+        } else {
+            log.debug("No valid JWT token found in request to {}", request.getRequestURI());
         }
 
         filterChain.doFilter(request, response);
@@ -53,9 +74,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private String extractToken(HttpServletRequest request) {
         String header = request.getHeader("Authorization");
-        if (header != null && header.startsWith("Bearer ")) {
-            return header.substring(7);
-        }
-        return null;
+        return (header != null && header.startsWith("Bearer ")) ? header.substring(7) : null;
     }
 }

@@ -2,11 +2,13 @@ package com.apply.diarypic.global.security;
 
 import com.apply.diarypic.global.security.jwt.JwtAuthenticationFilter;
 import com.apply.diarypic.user.service.CustomOAuth2UserService;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
@@ -40,9 +42,10 @@ public class SecurityConfig {
                         /* 나머지는 인증 */
                         .anyRequest().authenticated()
                 )
-                .oauth2Login(oauth -> oauth
-                        .userInfoEndpoint(ep -> ep.userService(customOAuth2UserService))
-                        .successHandler(oAuth2SuccessHandler)
+                .formLogin(AbstractHttpConfigurer::disable)
+                .httpBasic(AbstractHttpConfigurer::disable)
+                .exceptionHandling(e -> e.authenticationEntryPoint(
+                        (req, res, ex) -> res.sendError(HttpServletResponse.SC_UNAUTHORIZED))
                 );
 
         /* JWT 필터 추가 */

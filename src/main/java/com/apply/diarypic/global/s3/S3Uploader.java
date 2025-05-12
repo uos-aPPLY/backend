@@ -54,4 +54,7 @@ public class S3Uploader {
     private String getS3Url(String fileName) {
         return String.format("https://%s.s3.ap-northeast-2.amazonaws.com/%s", bucket, fileName);
     }
+
+    public void deleteFileByUrl(String photoUrl) {
+    }
 }

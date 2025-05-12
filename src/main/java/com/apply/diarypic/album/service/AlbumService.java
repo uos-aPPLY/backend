@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -33,12 +34,18 @@ public class AlbumService {
     private final DiaryAlbumRepository diaryAlbumRepository;
     private final UserRepository userRepository;
 
-    // ... (getUserAlbums, getDiariesInAlbum, deleteAlbum은 이전과 동일)
     public List<AlbumDto> getUserAlbums(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found: " + userId));
         return albumRepository.findByUserOrderByCreatedAtDesc(user).stream()
-                .map(album -> AlbumDto.fromEntity(album, album.getDiaryAlbums() != null ? album.getDiaryAlbums().size() : 0))
+                // 앨범 내 활성 일기 수를 계산하여 DTO 생성
+                .map(album -> {
+                    long activeDiaryCount = album.getDiaryAlbums().stream()
+                            .map(DiaryAlbum::getDiary)
+                            .filter(diary -> diary.getDeletedAt() == null)
+                            .count();
+                    return AlbumDto.fromEntity(album, (int) activeDiaryCount);
+                })
                 .collect(Collectors.toList());
     }
 
@@ -55,38 +62,78 @@ public class AlbumService {
 
         return diaryAlbumRepository.findByAlbum(album).stream()
                 .map(DiaryAlbum::getDiary)
+                .filter(diary -> diary.getDeletedAt() == null) // 삭제되지 않은 일기만 포함
+                .sorted(Comparator.comparing(Diary::getDiaryDate, Comparator.nullsLast(Comparator.reverseOrder())) // 날짜 최신순 정렬
+                        .thenComparing(Diary::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
                 .map(DiaryResponse::from)
                 .collect(Collectors.toList());
     }
 
     @Transactional
     public void processDiaryAlbums(Diary diary, List<DiaryPhoto> diaryPhotos) {
-        if (diaryPhotos == null || diaryPhotos.isEmpty()) {
+        // 일기가 논리적으로 삭제된 경우 앨범 처리 로직을 건너뛸 수 있습니다.
+        // 또는, 이 메소드는 일기 생성/수정 시에만 호출되므로 diary.getDeletedAt()이 null일 때만 동작한다고 가정할 수 있습니다.
+        // 만약 일기 복원 시에도 이 메소드가 호출되어야 한다면, 해당 부분을 고려해야 합니다.
+        // 현재는 diary가 활성 상태일 때만 앨범을 처리한다고 가정합니다.
+        if (diary.getDeletedAt() != null) {
+            log.info("일기 ID {}는 휴지통 상태이므로 앨범 처리를 건너뜁니다.", diary.getId());
             return;
         }
+
+        if (diaryPhotos == null || diaryPhotos.isEmpty()) {
+            // 사진이 없으면 기존 앨범 연결을 유지하거나, 정책에 따라 연결을 제거할 수도 있습니다.
+            // 여기서는 사진 기반으로 앨범을 결정하므로, 사진이 없으면 추가적인 앨범 연결은 하지 않습니다.
+            // 기존 연결을 제거하고 싶다면 diaryAlbumRepository.deleteByDiary(diary) 호출 후 아래 로직 진행.
+            log.info("일기 ID {}에 사진이 없어 앨범 처리를 진행하지 않습니다.", diary.getId());
+            return;
+        }
+
         User user = diary.getUser();
-        Set<String> albumNamesForThisDiary = new HashSet<>();
+        Set<String> newAlbumNamesForThisDiary = new HashSet<>();
 
         for (DiaryPhoto photo : diaryPhotos) {
             String albumName = determineAlbumName(photo.getCountryName(), photo.getAdminAreaLevel1(), photo.getLocality());
             if (StringUtils.hasText(albumName)) {
-                albumNamesForThisDiary.add(albumName);
+                newAlbumNamesForThisDiary.add(albumName);
             }
         }
 
-        albumNamesForThisDiary.forEach(name -> {
-            Optional<Album> existingAlbumOpt = albumRepository.findByNameAndUser(name, user);
-            Album album = existingAlbumOpt.orElseGet(() -> {
-                log.info("새로운 앨범 생성: '{}' for user {}", name, user.getId());
-                Album newAlbum = Album.builder()
-                        .name(name)
-                        .user(user)
-                        .coverImageUrl(!diaryPhotos.isEmpty() ? diaryPhotos.get(0).getPhotoUrl() : null)
-                        .build();
-                return albumRepository.save(newAlbum);
-            });
+        // 기존 앨범 연결 조회
+        List<DiaryAlbum> existingDiaryAlbums = diaryAlbumRepository.findByDiary(diary);
+        Set<String> existingAlbumNames = existingDiaryAlbums.stream()
+                .map(da -> da.getAlbum().getName())
+                .collect(Collectors.toSet());
 
-            if (!diaryAlbumRepository.findByDiaryAndAlbum(diary, album).isPresent()) {
+        // 제거할 앨범 연결 (기존 O, 신규 X)
+        List<DiaryAlbum> albumsToRemove = existingDiaryAlbums.stream()
+                .filter(da -> !newAlbumNamesForThisDiary.contains(da.getAlbum().getName()))
+                .collect(Collectors.toList());
+
+        if (!albumsToRemove.isEmpty()) {
+            diaryAlbumRepository.deleteAll(albumsToRemove);
+            log.info("일기 ID {}에서 다음 앨범 연결 제거: {}", diary.getId(), albumsToRemove.stream().map(da->da.getAlbum().getName()).collect(Collectors.toList()));
+        }
+
+        // 추가할 앨범 연결 (기존 X, 신규 O)
+        newAlbumNamesForThisDiary.forEach(name -> {
+            if (!existingAlbumNames.contains(name)) { // 기존에 연결되지 않은 앨범만 처리
+                Album album = albumRepository.findByNameAndUser(name, user)
+                        .orElseGet(() -> {
+                            log.info("새로운 앨범 생성: '{}' for user {}", name, user.getId());
+                            // 새 앨범의 커버 이미지는 이 일기의 첫번째 사진으로 설정
+                            String coverImageUrl = diaryPhotos.stream()
+                                    .map(DiaryPhoto::getPhotoUrl)
+                                    .filter(StringUtils::hasText)
+                                    .findFirst()
+                                    .orElse(null);
+                            Album newAlbum = Album.builder()
+                                    .name(name)
+                                    .user(user)
+                                    .coverImageUrl(coverImageUrl)
+                                    .build();
+                            return albumRepository.save(newAlbum);
+                        });
+
                 DiaryAlbum diaryAlbum = DiaryAlbum.builder().diary(diary).album(album).build();
                 diaryAlbumRepository.save(diaryAlbum);
                 log.info("일기 ID {}를 앨범 '{}'(ID:{})에 매핑 완료.", diary.getId(), album.getName(), album.getId());
@@ -94,26 +141,17 @@ public class AlbumService {
         });
     }
 
-    // 앨범 이름 결정 헬퍼 메소드 (요청사항 반영)
     private String determineAlbumName(String countryName, String adminAreaLevel1, String locality) {
         if (!StringUtils.hasText(countryName)) {
-            return "기타 장소"; // 또는 null 반환 후 호출부에서 처리
+            return "기타 장소";
         }
-
-        // 1. 국내인 경우 (countryName이 "대한민국")
         if ("대한민국".equals(countryName)) {
-            if (StringUtils.hasText(locality)) {
-                return locality; // 예: "수원시"
-            } else if (StringUtils.hasText(adminAreaLevel1)){
-                return adminAreaLevel1; // 예: "서울특별시", "경기도"
-            } else {
-                return countryName; // 모든 하위 지역 정보가 없을 경우 "대한민국"
-            }
-        } else { // 2. 해외인 경우
-            if (StringUtils.hasText(adminAreaLevel1)) {
-                return countryName + " - " + adminAreaLevel1; // 예: "일본 - 오사카부", "베트남 - Đà Nẵng"
-            }
-            return countryName; // adminAreaLevel1 정보가 없으면 국가명만 사용 (예: "몽골")
+            if (StringUtils.hasText(locality)) return locality;
+            if (StringUtils.hasText(adminAreaLevel1)) return adminAreaLevel1;
+            return countryName;
+        } else {
+            if (StringUtils.hasText(adminAreaLevel1)) return countryName + " - " + adminAreaLevel1;
+            return countryName;
         }
     }
 
@@ -127,6 +165,7 @@ public class AlbumService {
         if (!album.getUser().getId().equals(userId)) {
             throw new SecurityException("앨범에 대한 삭제 권한이 없습니다.");
         }
+        // DiaryAlbum 연결은 Album 엔티티의 @OneToMany(cascade=CascadeType.ALL, orphanRemoval=true) 설정으로 자동 처리
         albumRepository.delete(album);
         log.info("앨범 '{}' (ID: {}) 삭제 완료.", album.getName(), albumId);
     }

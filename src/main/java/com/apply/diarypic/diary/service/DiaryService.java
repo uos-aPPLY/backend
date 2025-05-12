@@ -1,16 +1,14 @@
 package com.apply.diarypic.diary.service;
 
 import com.apply.diarypic.ai.dto.AiDiaryGenerateRequestDto;
+import com.apply.diarypic.ai.dto.AiDiaryModifyRequestDto;
 import com.apply.diarypic.ai.dto.AiDiaryResponseDto;
 import com.apply.diarypic.ai.dto.ImageInfoDto;
 import com.apply.diarypic.ai.service.AiServerService;
 import com.apply.diarypic.album.repository.AlbumRepository;
 import com.apply.diarypic.album.repository.DiaryAlbumRepository;
 import com.apply.diarypic.album.service.AlbumService;
-import com.apply.diarypic.diary.dto.AiDiaryCreateRequest;
-import com.apply.diarypic.diary.dto.DiaryRequest;
-import com.apply.diarypic.diary.dto.DiaryResponse;
-import com.apply.diarypic.diary.dto.FavoriteToggleRequest; // FavoriteToggleRequest 임포트
+import com.apply.diarypic.diary.dto.*;
 import com.apply.diarypic.diary.entity.Diary;
 import com.apply.diarypic.photo.entity.DiaryPhoto;
 import com.apply.diarypic.diary.repository.DiaryRepository;
@@ -317,6 +315,76 @@ public class DiaryService {
         }
 
         return DiaryResponse.from(diaryRepository.save(diary)); // diary 저장 (대표사진 URL 업데이트 포함)
+    }
+
+    @Transactional
+    public DiaryResponse updateDiaryManual(Long userId, Long diaryId, DiaryManualUpdateRequest request) {
+        Diary diary = diaryRepository.findById(diaryId)
+                .orElseThrow(() -> new EntityNotFoundException("수정할 일기를 찾을 수 없습니다. ID: " + diaryId));
+
+        if (!diary.getUser().getId().equals(userId)) {
+            throw new SecurityException("해당 일기에 대한 수정 권한이 없습니다.");
+        }
+
+        boolean updated = false;
+        if (StringUtils.hasText(request.getContent())) {
+            diary.setContent(request.getContent());
+            updated = true;
+        }
+        if (StringUtils.hasText(request.getEmotionIcon())) {
+            diary.setEmotionIcon(request.getEmotionIcon());
+            updated = true;
+        }
+
+        if (updated) {
+            // 엔티티의 @PreUpdate가 호출되어 updatedAt이 자동으로 갱신됩니다.
+            return DiaryResponse.from(diaryRepository.save(diary));
+        }
+        // 변경 사항이 없으면 기존 일기 정보를 그대로 반환 (혹은 다른 방식으로 처리 가능)
+        return DiaryResponse.from(diary);
+    }
+
+    @Transactional
+    public DiaryResponse updateDiaryWithAiAssistance(Long userId, Long diaryId, DiaryAiUpdateRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다. ID: " + userId));
+        Diary diary = diaryRepository.findById(diaryId)
+                .orElseThrow(() -> new EntityNotFoundException("수정할 일기를 찾을 수 없습니다. ID: " + diaryId));
+
+        if (!diary.getUser().getId().equals(userId)) {
+            throw new SecurityException("해당 일기에 대한 수정 권한이 없습니다.");
+        }
+
+        String userWritingStyle = user.getWritingStylePrompt();
+        if (!StringUtils.hasText(userWritingStyle)) {
+            // 기본 글쓰기 스타일 설정 (일기 생성 시와 동일하게)
+            userWritingStyle = "오늘 있었던 일을 바탕으로 일기를 작성해줘.";
+        }
+
+        AiDiaryModifyRequestDto aiModifyRequest = new AiDiaryModifyRequestDto(
+                userWritingStyle,
+                request.getMarkedDiaryContent(),
+                request.getUserRequest()
+        );
+
+        // AI 서버에 수정 요청
+        AiDiaryResponseDto aiResponse = aiServerService.requestDiaryModification(aiModifyRequest).block(); // WebClient는 기본적으로 비동기. 필요에 따라 block() 또는 subscribe() 사용
+
+        if (aiResponse == null || !StringUtils.hasText(aiResponse.getDiary())) {
+            // AI 서버에서 응답이 없거나, diary 내용이 비어있는 경우 예외 처리
+            // AiServerService의 onErrorResume에서 이미 기본 메시지를 포함한 DTO를 반환하도록 설정했으므로,
+            // 여기서는 해당 메시지를 그대로 사용하거나, 좀 더 구체적인 예외를 발생시킬 수 있습니다.
+            throw new RuntimeException("AI 서버로부터 일기 수정 내용을 받지 못했습니다. 응답 내용: " + (aiResponse != null ? aiResponse.getDiary() : "null"));
+        }
+
+        // AI 서버로부터 받은 내용으로 일기 업데이트
+        diary.setContent(aiResponse.getDiary());
+        if (StringUtils.hasText(aiResponse.getEmoji())) { // emoji는 선택적으로 올 수 있으므로 null 체크
+            diary.setEmotionIcon(aiResponse.getEmoji());
+        }
+        // 사진 관련 정보는 수정하지 않음
+
+        return DiaryResponse.from(diaryRepository.save(diary));
     }
 
     @Transactional

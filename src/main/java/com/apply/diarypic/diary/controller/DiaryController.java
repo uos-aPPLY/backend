@@ -1,10 +1,6 @@
 package com.apply.diarypic.diary.controller;
 
-import com.apply.diarypic.diary.dto.AiDiaryCreateRequest;
-import com.apply.diarypic.diary.dto.DiaryRequest;
-import com.apply.diarypic.diary.dto.DiaryResponse;
-import com.apply.diarypic.diary.dto.FavoriteToggleRequest;
-import com.apply.diarypic.diary.dto.SetRepresentativePhotoRequest;
+import com.apply.diarypic.diary.dto.*;
 import com.apply.diarypic.diary.service.DiaryService;
 import com.apply.diarypic.global.security.CurrentUser;
 import com.apply.diarypic.global.security.UserPrincipal;
@@ -67,6 +63,26 @@ public class DiaryController {
         return ResponseEntity.ok(response);
     }
 
+    @Operation(summary = "일기 수동 수정 (내용, 이모티콘)")
+    @PatchMapping("/{diaryId}") // 대표사진 변경과 구분하기 위해 HTTP Method는 동일하게, 경로는 기본으로 사용
+    public ResponseEntity<DiaryResponse> updateDiaryManual(
+            @CurrentUser UserPrincipal userPrincipal,
+            @PathVariable Long diaryId,
+            @Valid @RequestBody DiaryManualUpdateRequest request) {
+        DiaryResponse response = diaryService.updateDiaryManual(userPrincipal.getUserId(), diaryId, request);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "AI를 이용한 일기 수정")
+    @PatchMapping("/{diaryId}/ai-modify")
+    public ResponseEntity<DiaryResponse> updateDiaryWithAi(
+            @CurrentUser UserPrincipal userPrincipal,
+            @PathVariable Long diaryId,
+            @Valid @RequestBody DiaryAiUpdateRequest request) {
+        DiaryResponse response = diaryService.updateDiaryWithAiAssistance(userPrincipal.getUserId(), diaryId, request);
+        return ResponseEntity.ok(response);
+    }
+
     @DeleteMapping("/{diaryId}")
     public ResponseEntity<Void> deleteDiary(@CurrentUser UserPrincipal userPrincipal,
                                             @PathVariable Long diaryId) {
@@ -106,4 +122,5 @@ public class DiaryController {
         );
         return ResponseEntity.ok(response);
     }
+
 }

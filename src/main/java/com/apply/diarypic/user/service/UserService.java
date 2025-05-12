@@ -43,9 +43,9 @@ public class UserService {
         User user = getUserById(userId);
         LocalDate now = LocalDate.now();
 
-        long totalDiariesCount = diaryRepository.countByUser(user);
-        long yearDiariesCount = diaryRepository.countByUserAndYear(user, now.getYear());
-        long monthDiariesCount = diaryRepository.countByUserAndYearAndMonth(user, now.getYear(), now.getMonthValue());
+        long totalDiariesCount = diaryRepository.countByUserAndDeletedAtIsNull(user);
+        long yearDiariesCount = diaryRepository.countByUserAndYearAndDeletedAtIsNull(user, now.getYear());
+        long monthDiariesCount = diaryRepository.countByUserAndYearAndMonthAndDeletedAtIsNull(user, now.getYear(), now.getMonthValue());
 
         return UserResponse.from(user, totalDiariesCount, yearDiariesCount, monthDiariesCount);
     }

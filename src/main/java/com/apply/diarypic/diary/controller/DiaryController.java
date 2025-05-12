@@ -1,21 +1,22 @@
 package com.apply.diarypic.diary.controller;
 
-import com.apply.diarypic.diary.dto.*;
+import com.apply.diarypic.diary.dto.*; // 모든 DTO 임포트
 import com.apply.diarypic.diary.service.DiaryService;
 import com.apply.diarypic.global.security.CurrentUser;
 import com.apply.diarypic.global.security.UserPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter; // Parameter 임포트
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag; // Tag 어노테이션 추가
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page; // Page 임포트
-import org.springframework.data.domain.Pageable; // Pageable 임포트
-import org.springframework.data.domain.Sort; // Sort 임포트
-import org.springframework.data.web.PageableDefault; // PageableDefault 임포트
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-
+@Tag(name = "Diary API", description = "일기 관련 API") // Swagger 태그 추가
 @RestController
 @RequestMapping("/api/diaries")
 @RequiredArgsConstructor
@@ -23,7 +24,7 @@ public class DiaryController {
 
     private final DiaryService diaryService;
 
-    @Operation(summary = "특정 일기 상세 조회")
+    @Operation(summary = "특정 일기 상세 조회 (활성 상태)")
     @GetMapping("/{diaryId}")
     public ResponseEntity<DiaryResponse> getDiaryById(
             @CurrentUser UserPrincipal userPrincipal,
@@ -32,12 +33,12 @@ public class DiaryController {
         return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "사용자의 일기 목록 조회 (페이징, 최신순)")
+    @Operation(summary = "사용자의 활성 일기 목록 조회 (페이징, 최신순)")
     @GetMapping
     public ResponseEntity<Page<DiaryResponse>> getUserDiaries(
             @CurrentUser UserPrincipal userPrincipal,
-            @PageableDefault(size = 10, sort = "diaryDate", direction = Sort.Direction.DESC) // 기본 페이징: 10개씩, diaryDate 최신순
-            @Parameter(hidden = true) Pageable pageable) { // Swagger에서 pageable 파라미터 숨김 (필요시)
+            @PageableDefault(size = 10, sort = "diaryDate", direction = Sort.Direction.DESC)
+            @Parameter(hidden = true) Pageable pageable) {
         Page<DiaryResponse> response = diaryService.getDiariesByUser(userPrincipal.getUserId(), pageable);
         return ResponseEntity.ok(response);
     }
@@ -46,43 +47,22 @@ public class DiaryController {
     @PostMapping
     public ResponseEntity<DiaryResponse> createDiary(@CurrentUser UserPrincipal userPrincipal,
                                                      @Valid @RequestBody DiaryRequest diaryRequest) {
-        // DiaryService의 createDiary 메소드는 이미 DiaryRequest를 받도록 되어있고, 내부에서 representativePhotoId를 처리하므로 변경 없음
         DiaryResponse response = diaryService.createDiary(diaryRequest, userPrincipal.getUserId());
         return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "최종 사진 및 사용자 설정을 통한 AI 자동 일기 생성")
+    @Operation(summary = "AI 자동 일기 생성")
     @PostMapping("/auto")
     public ResponseEntity<DiaryResponse> createAiDiary(@CurrentUser UserPrincipal userPrincipal,
-                                                       @Valid @RequestBody AiDiaryCreateRequest aiDiaryCreateRequest) { // AiDiaryCreateRequest 사용
-        // DiaryService의 createDiaryWithAiAssistance 메소드 호출 시 AiDiaryCreateRequest 객체 전체를 전달
+                                                       @Valid @RequestBody AiDiaryCreateRequest aiDiaryCreateRequest) {
         DiaryResponse response = diaryService.createDiaryWithAiAssistance(
                 userPrincipal.getUserId(),
-                aiDiaryCreateRequest // AiDiaryCreateRequest 객체 전체 전달
+                aiDiaryCreateRequest
         );
         return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "일기 수동 수정 (내용, 이모티콘)")
-    @PatchMapping("/{diaryId}") // 대표사진 변경과 구분하기 위해 HTTP Method는 동일하게, 경로는 기본으로 사용
-    public ResponseEntity<DiaryResponse> updateDiaryManual(
-            @CurrentUser UserPrincipal userPrincipal,
-            @PathVariable Long diaryId,
-            @Valid @RequestBody DiaryManualUpdateRequest request) {
-        DiaryResponse response = diaryService.updateDiaryManual(userPrincipal.getUserId(), diaryId, request);
-        return ResponseEntity.ok(response);
-    }
-
-    @Operation(summary = "AI를 이용한 일기 수정")
-    @PatchMapping("/{diaryId}/ai-modify")
-    public ResponseEntity<DiaryResponse> updateDiaryWithAi(
-            @CurrentUser UserPrincipal userPrincipal,
-            @PathVariable Long diaryId,
-            @Valid @RequestBody DiaryAiUpdateRequest request) {
-        DiaryResponse response = diaryService.updateDiaryWithAiAssistance(userPrincipal.getUserId(), diaryId, request);
-        return ResponseEntity.ok(response);
-    }
-
+    @Operation(summary = "일기 삭제 (휴지통으로 이동 - 소프트 삭제)")
     @DeleteMapping("/{diaryId}")
     public ResponseEntity<Void> deleteDiary(@CurrentUser UserPrincipal userPrincipal,
                                             @PathVariable Long diaryId) {
@@ -122,15 +102,4 @@ public class DiaryController {
         );
         return ResponseEntity.ok(response);
     }
-
-    @Operation(summary = "일기 내 사진 목록 전체 수정 (추가, 삭제, 순서 변경)")
-    @PatchMapping("/{diaryId}/photos") // Photo 컬렉션에 대한 변경
-    public ResponseEntity<DiaryResponse> updateDiaryPhotos(
-            @CurrentUser UserPrincipal userPrincipal,
-            @PathVariable Long diaryId,
-            @Valid @RequestBody DiaryPhotosUpdateRequest request) {
-        DiaryResponse response = diaryService.updateDiaryPhotos(userPrincipal.getUserId(), diaryId, request);
-        return ResponseEntity.ok(response);
-    }
-
 }

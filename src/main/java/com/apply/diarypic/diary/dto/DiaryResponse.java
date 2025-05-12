@@ -3,7 +3,8 @@ package com.apply.diarypic.diary.dto;
 import com.apply.diarypic.diary.entity.Diary;
 import com.apply.diarypic.photo.dto.PhotoResponse;
 import com.fasterxml.jackson.annotation.JsonFormat;
-import lombok.Data;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.Data; // @Getter, @Setter, @ToString, @EqualsAndHashCode, @RequiredArgsConstructor를 합친 것
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collections;
@@ -12,6 +13,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Data
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class DiaryResponse {
     private Long id;
     private String content;
@@ -24,8 +26,15 @@ public class DiaryResponse {
 
     private String representativePhotoUrl;
 
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime createdAt;
+
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime updatedAt;
+
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    private LocalDateTime deletedAt;
+
     private List<PhotoResponse> photos;
 
     public static DiaryResponse from(Diary diary) {
@@ -39,13 +48,20 @@ public class DiaryResponse {
         response.setRepresentativePhotoUrl(diary.getRepresentativePhotoUrl());
         response.setCreatedAt(diary.getCreatedAt());
         response.setUpdatedAt(diary.getUpdatedAt());
+        response.setDeletedAt(diary.getDeletedAt());
+
         if (diary.getDiaryPhotos() != null) {
             response.setPhotos(diary.getDiaryPhotos().stream()
-                    .sorted(Comparator.comparingInt(p -> p.getSequence() != null ? p.getSequence() : 0)) // 순서대로 정렬
+                    .sorted(Comparator.comparingInt(p -> p.getSequence() != null ? p.getSequence() : Integer.MAX_VALUE)) // null일 경우 마지막으로
                     .map(PhotoResponse::from)
                     .collect(Collectors.toList()));
         } else {
             response.setPhotos(Collections.emptyList());
+        }
+
+        // status 필드를 deletedAt 값에 따라 동적으로 설정 (선택적)
+        if (diary.getDeletedAt() != null) {
+            response.setStatus("휴지통");
         }
         return response;
     }

@@ -36,14 +36,10 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import java.util.Set; // Set 임포트 추가
 
 
 @Slf4j
@@ -272,6 +268,25 @@ public class DiaryService {
                 .orElseThrow(() -> new EntityNotFoundException("일기를 찾을 수 없습니다. ID: " + diaryId));
         diary.setIsFavorited(request.getIsFavorited());
         return DiaryResponse.from(diaryRepository.save(diary));
+    }
+
+    @Transactional(readOnly = true)
+    public Page<DiaryResponse> searchDiariesByContent(Long userId, String keyword, Pageable pageable) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다. ID: " + userId));
+
+        // 검색어 길이 및 null/공백 체크
+        if (!StringUtils.hasText(keyword) || keyword.trim().length() < 2) {
+            log.info("사용자 ID {}의 검색어가 유효하지 않거나 너무 짧아 (두 글자 미만) 빈 결과를 반환합니다. 검색어: '{}'", userId, keyword);
+            return Page.empty(pageable);
+        }
+
+        String trimmedKeyword = keyword.trim(); // 앞뒤 공백 제거
+
+        Page<Diary> foundDiaries = diaryRepository.findByUserAndContentContainingAndDeletedAtIsNull(user, trimmedKeyword, pageable);
+        log.info("사용자 ID {}가 키워드 '{}'로 검색하여 {}개의 일기를 찾았습니다.", userId, trimmedKeyword, foundDiaries.getTotalElements());
+
+        return foundDiaries.map(DiaryResponse::from);
     }
 
     // --- 휴지통 기능 관련 메소드들 ---

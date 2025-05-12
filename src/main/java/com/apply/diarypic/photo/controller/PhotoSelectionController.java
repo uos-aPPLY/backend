@@ -14,6 +14,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Mono;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -34,17 +35,18 @@ public class PhotoSelectionController {
     }
 
     @Operation(summary = "AI에게 사진 추천 요청 (최대 9장 구성 위한)")
-    @PostMapping("/ai-recommend") // 복구된 엔드포인트
-    public ResponseEntity<AiPhotoRecommendResponse> getAiRecommendedPhotos(
-            @CurrentUser UserPrincipal userPrincipal,
-            @Valid @RequestBody AiPhotoRecommendRequest request) {
+    @PostMapping("/ai-recommend")
+    public Mono<ResponseEntity<AiPhotoRecommendResponse>> getAiRecommendedPhotos( // 반환 타입 Mono로 변경
+                                                                                  @CurrentUser UserPrincipal userPrincipal,
+                                                                                  @Valid @RequestBody AiPhotoRecommendRequest request) {
 
-        List<Long> recommendedIds = photoRecommendationService.getRecommendedPhotosFromAI(
+        return photoRecommendationService.getRecommendedPhotosFromAI(
                 userPrincipal.getUserId(),
                 request.getUploadedPhotoIds(),
                 request.getMandatoryPhotoIds()
-        );
-        return ResponseEntity.ok(new AiPhotoRecommendResponse(recommendedIds));
+        ).map(recommendedIds -> ResponseEntity.ok(new AiPhotoRecommendResponse(recommendedIds)));
+        // 에러 처리는 PhotoRecommendationService의 onErrorResume에서 처리하거나, 여기서 추가 가능
+        // .onErrorResume(e -> Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()));
     }
 
     @Operation(summary = "최종 사진 선택 확정 (최종 9장 구성)")

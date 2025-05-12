@@ -104,6 +104,8 @@ logging:
   level:
     org.hibernate.SQL: debug
     org.hibernate.type: trace
+    com.apply.diarypic.global.security.jwt: DEBUG
+    org.springframework.security: DEBUG
 
 # baseUrl 설정
 base-url: ${BASE_URL:http://localhost:8080}

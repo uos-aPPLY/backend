@@ -20,6 +20,27 @@ public class UserResponse {
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm")
     private LocalTime alarmTime;
 
+    // 새로운 필드 추가
+    private Long totalDiariesCount;
+    private Long yearDiariesCount;
+    private Long monthDiariesCount;
+
+    // from 메소드 수정
+    public static UserResponse from(User user, Long totalDiariesCount, Long yearDiariesCount, Long monthDiariesCount) {
+        return UserResponse.builder()
+                .id(user.getId())
+                .snsProvider(user.getSnsProvider())
+                .snsUserId(user.getSnsUserId())
+                .nickname(user.getNickname())
+                .writingStylePrompt(user.getWritingStylePrompt())
+                .alarmEnabled(user.getAlarmEnabled())
+                .alarmTime(user.getAlarmTime())
+                .totalDiariesCount(totalDiariesCount)
+                .yearDiariesCount(yearDiariesCount)
+                .monthDiariesCount(monthDiariesCount)
+                .build();
+    }
+
     public static UserResponse from(User user) {
         return UserResponse.builder()
                 .id(user.getId())
@@ -29,6 +50,9 @@ public class UserResponse {
                 .writingStylePrompt(user.getWritingStylePrompt())
                 .alarmEnabled(user.getAlarmEnabled())
                 .alarmTime(user.getAlarmTime())
+                .totalDiariesCount(null)
+                .yearDiariesCount(null)
+                .monthDiariesCount(null)
                 .build();
     }
 }

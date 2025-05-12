@@ -1,7 +1,6 @@
 package com.apply.diarypic.global.security;
 
 import com.apply.diarypic.global.security.jwt.JwtAuthenticationFilter;
-import com.apply.diarypic.user.service.CustomOAuth2UserService;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -23,7 +22,6 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
-    private final CustomOAuth2UserService customOAuth2UserService;
     private final OAuth2SuccessHandler oAuth2SuccessHandler;
 
     @Bean

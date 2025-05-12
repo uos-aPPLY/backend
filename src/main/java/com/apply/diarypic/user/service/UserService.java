@@ -7,13 +7,16 @@ import com.apply.diarypic.diary.repository.DiaryRepository;
 import com.apply.diarypic.global.s3.S3Uploader;
 import com.apply.diarypic.keyword.repository.KeywordRepository;
 import com.apply.diarypic.terms.repository.UserTermsAgreementRepository;
+import com.apply.diarypic.user.dto.UserResponse;
 import com.apply.diarypic.user.entity.User;
 import com.apply.diarypic.user.repository.UserRepository;
+import jakarta.persistence.EntityNotFoundException; // EntityNotFoundException으로 변경 (일관성)
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 
@@ -29,9 +32,22 @@ public class UserService {
     private final S3Uploader s3Uploader;
     private final AlbumRepository albumRepository;
 
+    @Transactional(readOnly = true)
     public User getUserById(Long userId) {
         return userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+                .orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다. ID: " + userId));
+    }
+
+    @Transactional(readOnly = true)
+    public UserResponse getUserInfoWithDiaryCounts(Long userId) {
+        User user = getUserById(userId);
+        LocalDate now = LocalDate.now();
+
+        long totalDiariesCount = diaryRepository.countByUser(user);
+        long yearDiariesCount = diaryRepository.countByUserAndYear(user, now.getYear());
+        long monthDiariesCount = diaryRepository.countByUserAndYearAndMonth(user, now.getYear(), now.getMonthValue());
+
+        return UserResponse.from(user, totalDiariesCount, yearDiariesCount, monthDiariesCount);
     }
 
     @Transactional
@@ -56,36 +72,48 @@ public class UserService {
         return user;
     }
 
-    /**
-     * 사용자 삭제:
-     * 1) 해당 사용자의 모든 Diary와 DiaryPhoto를 S3에서 삭제
-     * 2) DB에서 User 엔티티를 삭제 (Cascade.ALL 으로 Diary+Photo도 함께 삭제)
-     */
     @Transactional
     public void deleteUser(Long userId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+                .orElseThrow(() -> new EntityNotFoundException("삭제할 사용자를 찾을 수 없습니다. ID: " + userId));
 
-        // 1) S3에 저장된 사진 전부 삭제
+        log.info("사용자 삭제 절차 시작: userId={}", userId);
+
+        // 1. 사용자의 모든 일기 조회
         List<Diary> diaries = diaryRepository.findByUserId(userId);
-        for (Diary diary : diaries) {
-            for (DiaryPhoto photo : diary.getDiaryPhotos()) {
-                /*
-                try {
-                    s3Uploader.delete(photo.getPhotoUrl());
-                } catch (Exception e) {
-                    // 로그만 남기고 계속
-                    log.error("S3 사진 삭제 실패: {}", photo.getPhotoUrl(), e);
-                }
-                 */
-            }
-        }
+        log.info("사용자 ID {}의 일기 {}개 S3 파일 삭제 시작", userId, diaries.size());
 
-        // 2) DB에서 User 삭제 (cascade 옵션에 따라 Diary/Photo가 함께 삭제)
+        // 2. 각 일기에 포함된 사진들의 S3 파일 삭제
+//        for (Diary diary : diaries) {
+//            for (DiaryPhoto photo : diary.getDiaryPhotos()) {
+//                if (photo.getPhotoUrl() != null && !photo.getPhotoUrl().isEmpty()) {
+//                    try {
+//                        s3Uploader.deleteFileByUrl(photo.getPhotoUrl()); // S3Uploader의 메소드 호출
+//                        log.info("S3 파일 삭제 성공: {}", photo.getPhotoUrl());
+//                    } catch (Exception e) {
+//                        // S3 파일 삭제 실패 시 에러 로깅 후 계속 진행 (DB 데이터는 삭제되어야 함)
+//                        log.error("S3 파일 삭제 실패: {}. 원인: {}", photo.getPhotoUrl(), e.getMessage(), e);
+//                    }
+//                }
+//            }
+//        }
+//        log.info("사용자 ID {}의 S3 파일 삭제 완료 또는 시도 완료", userId);
+
+        log.info("사용자 ID {}의 앨범 정보 삭제 시작", userId);
         albumRepository.deleteAllByUser(user);
+
+        log.info("사용자 ID {}의 약관 동의 정보 삭제 시작", userId);
         userTermsAgreementRepository.deleteAllByUser(user);
+
+        log.info("사용자 ID {}의 키워드 정보 삭제 시작", userId);
         keywordRepository.deleteAllByUser(user);
+
+        log.info("사용자 ID {}의 일기 정보 삭제 시작 (DB)", userId);
         diaryRepository.deleteAll(diaries);
+
+        log.info("사용자 ID {}의 User 엔티티 삭제 시작", userId);
         userRepository.delete(user);
+
+        log.info("사용자 ID {} 삭제 완료.", userId);
     }
 }

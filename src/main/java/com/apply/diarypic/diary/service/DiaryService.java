@@ -30,6 +30,7 @@ import org.springframework.data.domain.Page; // Page 임포트
 import org.springframework.data.domain.Pageable; // Pageable 임포트
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
 
@@ -102,15 +103,20 @@ public class DiaryService {
     //      toggleDiaryFavorite, setDiaryFavorite, getFavoriteDiaries, setInitialRepresentativePhoto 등은 이전과 동일) ...
 
     @Transactional
-    public DiaryResponse createDiaryWithAiAssistance(Long userId, LocalDate diaryDate, List<AiDiaryCreateRequest.FinalizedPhotoPayload> finalizedPhotoPayloads) {
+    public DiaryResponse createDiaryWithAiAssistance(Long userId, AiDiaryCreateRequest aiDiaryCreateRequest) { // 파라미터 변경
         User user = userRepository.findById(userId).orElseThrow(() -> new EntityNotFoundException("User not found: " + userId));
         String userWritingStyle = user.getWritingStylePrompt();
         if (!StringUtils.hasText(userWritingStyle)) userWritingStyle = "오늘 있었던 일을 바탕으로 일기를 작성해줘.";
+
+        LocalDate diaryDate = aiDiaryCreateRequest.getDiaryDate();
         if (diaryDate == null) diaryDate = LocalDate.now();
+
+        List<AiDiaryCreateRequest.FinalizedPhotoPayload> finalizedPhotoPayloads = aiDiaryCreateRequest.getFinalizedPhotos();
         if (finalizedPhotoPayloads == null || finalizedPhotoPayloads.isEmpty() || finalizedPhotoPayloads.size() > 9) {
             throw new IllegalArgumentException("사진 정보가 올바르지 않습니다.");
         }
 
+        // AI 요청 위한 ImageInfoDto 생성 (기존 로직)
         List<ImageInfoDto> imageInfoForAi = finalizedPhotoPayloads.stream()
                 .map(payload -> {
                     DiaryPhoto diaryPhoto = photoRepository.findById(payload.getPhotoId()).orElseThrow(() -> new IllegalArgumentException("Photo not found: " + payload.getPhotoId()));
@@ -130,9 +136,17 @@ public class DiaryService {
         String autoContent = aiResponse.getDiary();
         String autoEmoji = aiResponse.getEmoji();
 
+        // 일기 및 앨범 생성 (대표 사진 ID는 이 단계에서 직접 사용하지 않음)
         Diary diary = createAndSaveDiaryAndAlbums(user, autoContent, autoEmoji, diaryDate, finalizedPhotoPayloads, userId, true);
-        setInitialRepresentativePhoto(diary);
-        return DiaryResponse.from(diaryRepository.save(diary));
+
+        // 대표 사진 설정 로직
+        if (aiDiaryCreateRequest.getRepresentativePhotoId() != null) {
+            setExplicitRepresentativePhoto(diary, aiDiaryCreateRequest.getRepresentativePhotoId(), userId, finalizedPhotoPayloads.stream().map(AiDiaryCreateRequest.FinalizedPhotoPayload::getPhotoId).collect(Collectors.toList()));
+        } else {
+            setInitialRepresentativePhoto(diary); // 명시적 ID 없으면 기존 로직
+        }
+
+        return DiaryResponse.from(diaryRepository.save(diary)); // diary 저장 (대표사진 URL 업데이트 포함)
     }
 
     private Diary createAndSaveDiaryAndAlbums(User user, String content, String emoji, LocalDate diaryDate, List<AiDiaryCreateRequest.FinalizedPhotoPayload> finalizedPhotoPayloads, Long userId, boolean isAiGenerated) {
@@ -184,14 +198,39 @@ public class DiaryService {
         return savedDiary;
     }
 
+    // 명시적으로 대표 사진을 설정하는 헬퍼 메소드
+    private void setExplicitRepresentativePhoto(Diary diary, Long representativePhotoId, Long userId, List<Long> currentDiaryPhotoIds) {
+        DiaryPhoto repPhoto = photoRepository.findById(representativePhotoId)
+                .orElseThrow(() -> new EntityNotFoundException("대표 사진으로 지정할 사진을 찾을 수 없습니다. ID: " + representativePhotoId));
+
+        // 1. 해당 사진이 사용자의 사진인지 확인
+        if (!repPhoto.getUserId().equals(userId)) {
+            throw new SecurityException("대표 사진으로 지정할 사진에 대한 접근 권한이 없습니다.");
+        }
+        // 2. 해당 사진이 현재 생성되는 일기에 포함된 사진들 중 하나인지 확인
+        if (!currentDiaryPhotoIds.contains(representativePhotoId)) {
+            throw new IllegalArgumentException("선택된 대표 사진은 현재 일기에 포함된 사진이어야 합니다.");
+        }
+        // 3. DiaryPhoto 엔티티가 Diary와 연결되어 있는지 확인 (createAndSaveDiaryAndAlbums 이후 호출되므로 repPhoto.getDiary()는 이 시점에 null일 수 있음. currentDiaryPhotoIds로 체크하는 것이 더 적합)
+        //    만약 repPhoto.getDiary() != null && !repPhoto.getDiary().getId().equals(diary.getId()) 로 체크하려면, DiaryPhoto가 먼저 저장되고 Diary와 연결된 후여야 함.
+
+        diary.setRepresentativePhotoUrl(repPhoto.getPhotoUrl());
+    }
+
+    // 초기 대표 사진 설정 로직 (수정: 이미 설정된 경우 건너뛰도록)
     private void setInitialRepresentativePhoto(Diary diary) {
+        // 이미 대표 사진 URL이 설정되어 있다면, 이 메소드에서는 아무 작업도 하지 않음
+        if (StringUtils.hasText(diary.getRepresentativePhotoUrl())) {
+            return;
+        }
+
         if (diary.getDiaryPhotos() != null && !diary.getDiaryPhotos().isEmpty()) {
             diary.getDiaryPhotos().stream()
                     .filter(dp -> dp.getSequence() != null)
                     .min(Comparator.comparingInt(DiaryPhoto::getSequence))
                     .ifPresent(firstPhoto -> diary.setRepresentativePhotoUrl(firstPhoto.getPhotoUrl()));
         } else {
-            diary.setRepresentativePhotoUrl(null);
+            diary.setRepresentativePhotoUrl(null); // 사진이 없을 경우 null로 설정
         }
     }
 
@@ -256,17 +295,28 @@ public class DiaryService {
         LocalDate diaryDate = request.getDiaryDate() != null ? request.getDiaryDate() : LocalDate.now();
 
         List<AiDiaryCreateRequest.FinalizedPhotoPayload> photoPayloadsForManualDiary = new ArrayList<>();
-        if (request.getPhotoIds() != null) {
+        List<Long> currentPhotoIdsForManualDiary = new ArrayList<>(); // 대표 사진 검증용
+
+        if (!CollectionUtils.isEmpty(request.getPhotoIds())) {
             for (int i = 0; i < request.getPhotoIds().size(); i++) {
+                Long photoId = request.getPhotoIds().get(i);
                 photoPayloadsForManualDiary.add(
-                        new AiDiaryCreateRequest.FinalizedPhotoPayload(request.getPhotoIds().get(i), "", i + 1)
+                        new AiDiaryCreateRequest.FinalizedPhotoPayload(photoId, "", i + 1) // 키워드는 빈 문자열, 순서는 인덱스 기반
                 );
+                currentPhotoIdsForManualDiary.add(photoId);
             }
         }
 
         Diary diary = createAndSaveDiaryAndAlbums(user, request.getContent(), request.getEmotionIcon(), diaryDate, photoPayloadsForManualDiary, userId, false);
-        setInitialRepresentativePhoto(diary);
-        return DiaryResponse.from(diaryRepository.save(diary));
+
+        // 대표 사진 설정 로직
+        if (request.getRepresentativePhotoId() != null) {
+            setExplicitRepresentativePhoto(diary, request.getRepresentativePhotoId(), userId, currentPhotoIdsForManualDiary);
+        } else {
+            setInitialRepresentativePhoto(diary);
+        }
+
+        return DiaryResponse.from(diaryRepository.save(diary)); // diary 저장 (대표사진 URL 업데이트 포함)
     }
 
     @Transactional

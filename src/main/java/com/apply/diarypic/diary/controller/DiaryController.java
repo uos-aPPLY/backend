@@ -46,11 +46,11 @@ public class DiaryController {
         return ResponseEntity.ok(response);
     }
 
-    // ... (createDiary, createAiDiary, deleteDiary, toggleDiaryFavorite, setDiaryFavorite, setRepresentativePhoto 메소드는 이전과 동일) ...
     @Operation(summary = "사용자가 직접 작성한 일기 생성")
     @PostMapping
     public ResponseEntity<DiaryResponse> createDiary(@CurrentUser UserPrincipal userPrincipal,
                                                      @Valid @RequestBody DiaryRequest diaryRequest) {
+        // DiaryService의 createDiary 메소드는 이미 DiaryRequest를 받도록 되어있고, 내부에서 representativePhotoId를 처리하므로 변경 없음
         DiaryResponse response = diaryService.createDiary(diaryRequest, userPrincipal.getUserId());
         return ResponseEntity.ok(response);
     }
@@ -58,11 +58,11 @@ public class DiaryController {
     @Operation(summary = "최종 사진 및 사용자 설정을 통한 AI 자동 일기 생성")
     @PostMapping("/auto")
     public ResponseEntity<DiaryResponse> createAiDiary(@CurrentUser UserPrincipal userPrincipal,
-                                                       @Valid @RequestBody AiDiaryCreateRequest aiDiaryCreateRequest) {
+                                                       @Valid @RequestBody AiDiaryCreateRequest aiDiaryCreateRequest) { // AiDiaryCreateRequest 사용
+        // DiaryService의 createDiaryWithAiAssistance 메소드 호출 시 AiDiaryCreateRequest 객체 전체를 전달
         DiaryResponse response = diaryService.createDiaryWithAiAssistance(
                 userPrincipal.getUserId(),
-                aiDiaryCreateRequest.getDiaryDate(),
-                aiDiaryCreateRequest.getFinalizedPhotos()
+                aiDiaryCreateRequest // AiDiaryCreateRequest 객체 전체 전달
         );
         return ResponseEntity.ok(response);
     }

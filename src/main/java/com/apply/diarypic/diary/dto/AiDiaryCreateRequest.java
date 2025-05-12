@@ -26,6 +26,8 @@ public class AiDiaryCreateRequest {
     @Size(max = 9, message = "사진은 최대 9장까지 선택 가능합니다.")
     private List<FinalizedPhotoPayload> finalizedPhotos;
 
+    private Long representativePhotoId;
+
     @Getter
     @Setter
     @NoArgsConstructor

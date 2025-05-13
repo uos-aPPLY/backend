@@ -33,8 +33,13 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         /* 인증이 필요 없는 엔드포인트 */
-                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**",
-                                "/oauth2/**", "/api/auth/login")
+                        .requestMatchers(
+                                "/swagger-ui.html",
+                                "/swagger-ui/**",
+                                "/v3/api-docs",
+                                "/v3/api-docs/**",
+                                "/oauth2/**",
+                                "/api/auth/login")
                         .permitAll()
                         /* 나머지는 인증 */
                         .anyRequest().authenticated()

@@ -85,6 +85,9 @@ google:
     api:
       key: ${GOOGLE_MAPS_API_KEY}
 
+springdoc:
+  override-with-generic-response: false
+
 # 공통 JWT 설정
 jwt:
   secret: ${JWT_SECRET}
@@ -106,3 +109,4 @@ logging:
 
 # baseUrl 설정
 base-url: ${BASE_URL:http://localhost:8080}
+

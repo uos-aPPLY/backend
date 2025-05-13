@@ -14,8 +14,11 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
 
 @Tag(name = "Diary API", description = "일기 관련 API")
 @RestController
@@ -31,6 +34,16 @@ public class DiaryController {
             @CurrentUser UserPrincipal userPrincipal,
             @PathVariable Long diaryId) {
         DiaryResponse response = diaryService.getDiaryById(userPrincipal.getUserId(), diaryId);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "특정 날짜의 일기 조회 (캘린더 선택 시)")
+    @GetMapping("/by-date")
+    public ResponseEntity<DiaryResponse> getDiaryByDate(
+            @CurrentUser UserPrincipal userPrincipal,
+            @Parameter(description = "조회할 날짜 (YYYY-MM-DD 형식)", required = true, example = "2025-05-13")
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        DiaryResponse response = diaryService.getDiaryByDate(userPrincipal.getUserId(), date);
         return ResponseEntity.ok(response);
     }
 

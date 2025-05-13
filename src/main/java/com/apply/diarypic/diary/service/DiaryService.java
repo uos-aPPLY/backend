@@ -74,6 +74,15 @@ public class DiaryService {
         return diariesPage.map(DiaryResponse::from);
     }
 
+    @Transactional(readOnly = true)
+    public DiaryResponse getDiaryByDate(Long userId, LocalDate diaryDate) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다. ID: " + userId));
+        Diary diary = diaryRepository.findByUserAndDiaryDateAndDeletedAtIsNull(user, diaryDate)
+                .orElseThrow(() -> new EntityNotFoundException("해당 날짜(" + diaryDate + ")에 작성된 일기를 찾을 수 없습니다."));
+        return DiaryResponse.from(diary);
+    }
+
     @Transactional
     public DiaryResponse createDiary(DiaryRequest request, Long userId) {
         User user = userRepository.findById(userId)

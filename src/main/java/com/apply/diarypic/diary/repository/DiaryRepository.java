@@ -20,7 +20,7 @@ public interface DiaryRepository extends JpaRepository<Diary, Long> {
 
     @Query("SELECT d FROM Diary d WHERE d.user = :user AND d.deletedAt IS NULL ORDER BY d.diaryDate DESC, d.createdAt DESC")
     Page<Diary> findActiveDiariesByUser(@Param("user") User user, Pageable pageable);
-
+    Optional<Diary> findByUserAndDiaryDateAndDeletedAtIsNull(User user, LocalDate diaryDate);
     List<Diary> findByUserAndIsFavoritedTrueAndDeletedAtIsNullOrderByDiaryDateDesc(User user);
     Optional<Diary> findByIdAndUser(Long id, User user);
     List<Diary> findByUserId(Long userId);

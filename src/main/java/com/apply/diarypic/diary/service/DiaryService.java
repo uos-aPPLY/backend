@@ -32,10 +32,7 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -165,44 +162,50 @@ public class DiaryService {
                 .build();
         Diary savedDiary = diaryRepository.save(diary);
 
-        List<DiaryPhoto> newDiaryPhotos = new ArrayList<>();
+        List<DiaryPhoto> diaryPhotosForDiaryEntities = new ArrayList<>();
         if (finalizedPhotoPayloads != null) {
+            finalizedPhotoPayloads.sort(Comparator.comparingInt(AiDiaryCreateRequest.FinalizedPhotoPayload::getSequence));
             for (AiDiaryCreateRequest.FinalizedPhotoPayload payload : finalizedPhotoPayloads) {
                 DiaryPhoto diaryPhoto = photoRepository.findById(payload.getPhotoId())
-                        .orElseThrow(() -> new IllegalArgumentException("저장할 사진 정보를 찾을 수 없습니다. ID: " + payload.getPhotoId()));
-                if (!diaryPhoto.getUserId().equals(userId)) {
-                    throw new SecurityException("해당 사진에 대한 접근 권한이 없습니다. Photo ID: " + payload.getPhotoId());
-                }
-                diaryPhoto.setDiary(savedDiary);
-                diaryPhoto.setSequence(payload.getSequence());
-                newDiaryPhotos.add(diaryPhoto);
+                        .map(dp -> {
+                            if (!dp.getUserId().equals(userId)) {
+                                throw new SecurityException("해당 사진에 대한 접근 권한이 없습니다. Photo ID: " + payload.getPhotoId());
+                            }
+                            dp.setDiary(savedDiary);
+                            dp.setSequence(payload.getSequence());
+                            savedDiary.getDiaryPhotos().add(dp);
+                            return dp;
+                        }).orElseThrow(() -> new IllegalArgumentException("저장할 사진 정보를 찾을 수 없습니다. ID: " + payload.getPhotoId()));
+                diaryPhotosForDiaryEntities.add(diaryPhoto);
 
-                // 키워드 처리
-                String keywordString = payload.getKeyword();
-                if (StringUtils.hasText(keywordString)) {
-                    Arrays.stream(keywordString.split("\\s*,\\s*"))
-                            .map(String::trim).filter(s -> !s.isEmpty()).distinct()
+                String keywordStringFromFrontend = payload.getKeyword();
+                if (StringUtils.hasText(keywordStringFromFrontend)) {
+                    Arrays.stream(keywordStringFromFrontend.split("\\s*,\\s*"))
+                            .map(String::trim)
+                            .filter(kwText -> !kwText.isEmpty())
                             .forEach(kwText -> {
-                                Keyword keywordEntity = keywordRepository.findByNameAndUser(kwText, user)
-                                        .orElseGet(() -> keywordRepository.save(Keyword.builder().name(kwText).user(user).build()));
-                                PhotoKeywordId pkId = new PhotoKeywordId(diaryPhoto.getId(), keywordEntity.getId());
-                                if (!photoKeywordRepository.existsById(pkId)) {
-                                    photoKeywordRepository.save(PhotoKeyword.builder().diaryPhoto(diaryPhoto).keyword(keywordEntity).build());
+                                Optional<Keyword> keywordEntityOpt = keywordRepository.findByNameAndUser(kwText, user);
+
+                                if (keywordEntityOpt.isPresent()) {
+                                    Keyword foundKeyword = keywordEntityOpt.get();
+                                    PhotoKeyword newPhotoKeyword = PhotoKeyword.builder()
+                                            .diaryPhoto(diaryPhoto)
+                                            .keyword(foundKeyword)
+                                            .build();
+                                    photoKeywordRepository.save(newPhotoKeyword);
+                                    log.debug("사진 ID {}에 기존 개인 키워드 '{}'(ID:{}) 매핑 저장 (중복 허용).", diaryPhoto.getId(), kwText, foundKeyword.getId());
+                                } else {
+                                    log.debug("사진 ID {}에 대한 자유 입력 키워드 '{}'는 사용자 {}의 개인 키워드 목록에 없으므로 DB에 매핑하지 않음. AI 전달용으로만 사용됨.", diaryPhoto.getId(), kwText, user.getId());
                                 }
                             });
                 }
             }
-            // photoRepository.saveAll(newDiaryPhotos); // DiaryPhoto의 변경사항(diary_id, sequence) 저장
-            // Diary 엔티티의 diaryPhotos 리스트를 업데이트하고 Diary 저장 시 CascadeType.ALL로 처리됨.
-            savedDiary.getDiaryPhotos().addAll(newDiaryPhotos);
         }
 
-        // Diary 저장 후 AlbumService 호출 (DiaryPhoto가 Diary와 연결된 후)
-        // savedDiary = diaryRepository.save(savedDiary); // 위에서 이미 diaryPhotos를 추가했으므로, 이 save에서 DiaryPhoto도 함께 처리될 수 있음. 또는 아래 saveAll 직후.
-
-        if (!newDiaryPhotos.isEmpty()) {
-            albumService.processDiaryAlbums(savedDiary, newDiaryPhotos);
+        if (!diaryPhotosForDiaryEntities.isEmpty()) {
+            albumService.processDiaryAlbums(savedDiary, diaryPhotosForDiaryEntities);
         }
+
         return savedDiary;
     }
 

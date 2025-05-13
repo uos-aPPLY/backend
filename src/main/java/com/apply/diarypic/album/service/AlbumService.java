@@ -20,7 +20,6 @@ import org.springframework.util.StringUtils;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -38,7 +37,7 @@ public class AlbumService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found: " + userId));
         return albumRepository.findByUserOrderByCreatedAtDesc(user).stream()
-                // 앨범 내 활성 일기 수를 계산하여 DTO 생성
+                // 앨범 내 일기 수를 계산하여 DTO 생성
                 .map(album -> {
                     long activeDiaryCount = album.getDiaryAlbums().stream()
                             .map(DiaryAlbum::getDiary)
@@ -62,7 +61,7 @@ public class AlbumService {
 
         return diaryAlbumRepository.findByAlbum(album).stream()
                 .map(DiaryAlbum::getDiary)
-                .filter(diary -> diary.getDeletedAt() == null) // 삭제되지 않은 일기만 포함
+                .filter(diary -> diary.getDeletedAt() == null)
                 .sorted(Comparator.comparing(Diary::getDiaryDate, Comparator.nullsLast(Comparator.reverseOrder())) // 날짜 최신순 정렬
                         .thenComparing(Diary::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
                 .map(DiaryResponse::from)
@@ -71,19 +70,12 @@ public class AlbumService {
 
     @Transactional
     public void processDiaryAlbums(Diary diary, List<DiaryPhoto> diaryPhotos) {
-        // 일기가 논리적으로 삭제된 경우 앨범 처리 로직을 건너뛸 수 있습니다.
-        // 또는, 이 메소드는 일기 생성/수정 시에만 호출되므로 diary.getDeletedAt()이 null일 때만 동작한다고 가정할 수 있습니다.
-        // 만약 일기 복원 시에도 이 메소드가 호출되어야 한다면, 해당 부분을 고려해야 합니다.
-        // 현재는 diary가 활성 상태일 때만 앨범을 처리한다고 가정합니다.
         if (diary.getDeletedAt() != null) {
             log.info("일기 ID {}는 휴지통 상태이므로 앨범 처리를 건너뜁니다.", diary.getId());
             return;
         }
 
         if (diaryPhotos == null || diaryPhotos.isEmpty()) {
-            // 사진이 없으면 기존 앨범 연결을 유지하거나, 정책에 따라 연결을 제거할 수도 있습니다.
-            // 여기서는 사진 기반으로 앨범을 결정하므로, 사진이 없으면 추가적인 앨범 연결은 하지 않습니다.
-            // 기존 연결을 제거하고 싶다면 diaryAlbumRepository.deleteByDiary(diary) 호출 후 아래 로직 진행.
             log.info("일기 ID {}에 사진이 없어 앨범 처리를 진행하지 않습니다.", diary.getId());
             return;
         }

@@ -1,4 +1,4 @@
-package com.apply.diarypic.util.dto; // 예시 패키지
+package com.apply.diarypic.util.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

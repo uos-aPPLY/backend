@@ -2,7 +2,6 @@ package com.apply.diarypic.photo.controller;
 
 import com.apply.diarypic.global.security.CurrentUser;
 import com.apply.diarypic.global.security.UserPrincipal;
-import com.apply.diarypic.photo.dto.PhotoMetadata;
 import com.apply.diarypic.photo.dto.PhotoResponse;
 import com.apply.diarypic.photo.dto.PhotoUploadItemDto;
 import com.apply.diarypic.photo.service.PhotoService;
@@ -21,7 +20,7 @@ import java.util.List;
 public class PhotoUploadController {
 
     private final ObjectMapper objectMapper;
-    private final PhotoService photoService;          // ★ 추가
+    private final PhotoService photoService;
 
     @PostMapping("/upload")
     public ResponseEntity<List<PhotoResponse>> uploadPhotos(

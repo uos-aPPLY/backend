@@ -11,7 +11,7 @@ public class UpdateAlarmRequest {
     private Boolean enabled;
 
     @NotNull
-    private Integer hour;  // 0~23 범위로 변환해서 전달 (AM/PM 반영된 값)
+    private Integer hour;  // 0~23
 
     @NotNull
     private Integer minute; // 0~59

@@ -39,7 +39,7 @@ public class Diary {
     private String status;
 
     @Column(nullable = false)
-    private LocalDate diaryDate; // 일기가 해당하는 실제 날짜
+    private LocalDate diaryDate;
 
     @Column(length = 512)
     private String representativePhotoUrl;
@@ -50,7 +50,7 @@ public class Diary {
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
-    private LocalDateTime deletedAt; // 논리 삭제용
+    private LocalDateTime deletedAt;
 
     @OneToMany(mappedBy = "diary", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default

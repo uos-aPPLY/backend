@@ -8,7 +8,6 @@ public class GeocodingResponse {
     private List<GeocodingResult> results;
     private String status;
 
-    // Getters and Setters
     public List<GeocodingResult> getResults() {
         return results;
     }

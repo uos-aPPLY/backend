@@ -13,6 +13,6 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AiImageScoringResponseDto {
-    @JsonProperty("recommendedPhotoIds") // AI 서버 Pydantic 모델 필드명과 일치
-    private List<Object> recommendedPhotoIds; // Union[int, str]을 Java에서 Object로 받고, 서비스에서 Long으로 변환
+    @JsonProperty("recommendedPhotoIds")
+    private List<Object> recommendedPhotoIds;
 }

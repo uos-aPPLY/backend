@@ -9,8 +9,7 @@ import java.util.Optional;
 import java.util.List;
 
 public interface DiaryAlbumRepository extends JpaRepository<DiaryAlbum, DiaryAlbumId> {
-    Optional<DiaryAlbum> findByDiaryAndAlbum(Diary diary, Album album);
     List<DiaryAlbum> findByAlbum(Album album);
-    List<DiaryAlbum> findByDiary(Diary diary); // 한 일기가 속한 모든 앨범 매핑 조회 시
-    void deleteByDiary(Diary diary); // 일기 삭제 시 해당 일기의 모든 앨범 매핑 삭제
+    List<DiaryAlbum> findByDiary(Diary diary);
+    void deleteByDiary(Diary diary);
 }

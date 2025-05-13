@@ -17,7 +17,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
 import java.time.LocalDateTime;
-import java.time.ZoneId; // ZoneId 임포트
+import java.time.ZoneId;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -36,7 +36,7 @@ public class PhotoService_test {
             String s3Url = s3Uploader.upload(file, "photos");
 
             LocalDateTime shootingDateTime = null;
-            String locationString = null; // 위도,경도 문자열
+            String locationString = null;
             String countryName = null;
             String adminAreaLevel1 = null;
             String locality = null;
@@ -46,7 +46,7 @@ public class PhotoService_test {
                 ExifSubIFDDirectory exifDir = metadata.getFirstDirectoryOfType(ExifSubIFDDirectory.class);
                 if (exifDir != null && exifDir.getDateOriginal() != null) {
                     shootingDateTime = exifDir.getDateOriginal().toInstant()
-                            .atZone(ZoneId.systemDefault()) // 사용자 시스템 시간대 사용
+                            .atZone(ZoneId.systemDefault())
                             .toLocalDateTime();
                 }
                 GpsDirectory gpsDir = metadata.getFirstDirectoryOfType(GpsDirectory.class);
@@ -70,12 +70,11 @@ public class PhotoService_test {
                     .photoUrl(s3Url)
                     .userId(userId)
                     .shootingDateTime(shootingDateTime)
-                    .location(locationString) // 원본 GPS 좌표 문자열 저장
+                    .location(locationString)
                     .countryName(countryName)
                     .adminAreaLevel1(adminAreaLevel1)
                     .locality(locality)
-                    // .detailedAddress() 필드 제거됨
-                    .createdAt(LocalDateTime.now()) // 명시적 설정
+                    .createdAt(LocalDateTime.now())
                     .build();
             photoRepository.save(diaryPhoto);
 

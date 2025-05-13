@@ -1,10 +1,10 @@
-package com.apply.diarypic.global.scheduler; // 패키지 경로는 프로젝트 구조에 맞게 조정
+package com.apply.diarypic.global.scheduler;
 
 import com.apply.diarypic.diary.service.DiaryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Service; // @Service 어노테이션 추가
+import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
@@ -13,7 +13,7 @@ public class ScheduledTaskService {
 
     private final DiaryService diaryService;
 
-    // 매일 새벽 3시에 실행 (예시)
+    // 매일 새벽 3시에 실행
     // 초 분 시 일 월 요일 (년도 생략 가능)
     // "0 0 3 * * ?" -> 매일 새벽 3시 0분 0초
     @Scheduled(cron = "0 0 3 * * ?")

@@ -2,15 +2,15 @@ package com.apply.diarypic.user.service;
 
 import com.apply.diarypic.album.repository.AlbumRepository;
 import com.apply.diarypic.diary.entity.Diary;
-import com.apply.diarypic.photo.entity.DiaryPhoto;
 import com.apply.diarypic.diary.repository.DiaryRepository;
 import com.apply.diarypic.global.s3.S3Uploader;
 import com.apply.diarypic.keyword.repository.KeywordRepository;
+import com.apply.diarypic.photo.entity.DiaryPhoto;
 import com.apply.diarypic.terms.repository.UserTermsAgreementRepository;
 import com.apply.diarypic.user.dto.UserResponse;
 import com.apply.diarypic.user.entity.User;
 import com.apply.diarypic.user.repository.UserRepository;
-import jakarta.persistence.EntityNotFoundException; // EntityNotFoundException으로 변경 (일관성)
+import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -84,20 +84,19 @@ public class UserService {
         log.info("사용자 ID {}의 일기 {}개 S3 파일 삭제 시작", userId, diaries.size());
 
         // 2. 각 일기에 포함된 사진들의 S3 파일 삭제
-//        for (Diary diary : diaries) {
-//            for (DiaryPhoto photo : diary.getDiaryPhotos()) {
-//                if (photo.getPhotoUrl() != null && !photo.getPhotoUrl().isEmpty()) {
-//                    try {
-//                        s3Uploader.deleteFileByUrl(photo.getPhotoUrl()); // S3Uploader의 메소드 호출
-//                        log.info("S3 파일 삭제 성공: {}", photo.getPhotoUrl());
-//                    } catch (Exception e) {
-//                        // S3 파일 삭제 실패 시 에러 로깅 후 계속 진행 (DB 데이터는 삭제되어야 함)
-//                        log.error("S3 파일 삭제 실패: {}. 원인: {}", photo.getPhotoUrl(), e.getMessage(), e);
-//                    }
-//                }
-//            }
-//        }
-//        log.info("사용자 ID {}의 S3 파일 삭제 완료 또는 시도 완료", userId);
+        for (Diary diary : diaries) {
+            for (DiaryPhoto photo : diary.getDiaryPhotos()) {
+                if (photo.getPhotoUrl() != null && !photo.getPhotoUrl().isEmpty()) {
+                    try {
+                        s3Uploader.deleteFileByUrl(photo.getPhotoUrl());
+                        log.info("S3 파일 삭제 성공: {}", photo.getPhotoUrl());
+                    } catch (Exception e) {
+                        log.error("S3 파일 삭제 실패: {}. 원인: {}", photo.getPhotoUrl(), e.getMessage(), e);
+                    }
+                }
+            }
+        }
+        log.info("사용자 ID {}의 S3 파일 삭제 완료 또는 시도 완료", userId);
 
         log.info("사용자 ID {}의 앨범 정보 삭제 시작", userId);
         albumRepository.deleteAllByUser(user);

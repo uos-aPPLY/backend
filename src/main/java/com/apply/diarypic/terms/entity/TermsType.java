@@ -10,8 +10,7 @@ public enum TermsType {
     MARKETING_OPT_IN("마케팅 정보 수신 동의", 4); // [선택] 마케팅 정보 수신 동의
 
     private final String description;
-    // getter 추가
-    private final int displayOrder; // 표시 순서 필드 추가
+    private final int displayOrder;
 
     TermsType(String description, int displayOrder) {
         this.description = description;

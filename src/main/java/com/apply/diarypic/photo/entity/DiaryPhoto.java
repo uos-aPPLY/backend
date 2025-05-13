@@ -35,7 +35,7 @@ public class DiaryPhoto {
     @Column(length = 100)
     private String locality;
 
-    private String location; // GPS 좌표 문자열
+    private String location;
 
     private Integer sequence;
 

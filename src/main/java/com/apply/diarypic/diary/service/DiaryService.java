@@ -4,11 +4,9 @@ import com.apply.diarypic.ai.dto.AiDiaryGenerateRequestDto;
 import com.apply.diarypic.ai.dto.AiDiaryResponseDto;
 import com.apply.diarypic.ai.dto.ImageInfoDto;
 import com.apply.diarypic.ai.service.AiServerService;
-// AlbumRepository는 AlbumService를 통해 간접적으로 사용되므로 직접 주입은 필요 없을 수 있습니다.
-// import com.apply.diarypic.album.repository.AlbumRepository;
 import com.apply.diarypic.album.repository.DiaryAlbumRepository;
 import com.apply.diarypic.album.service.AlbumService;
-import com.apply.diarypic.diary.dto.*; // 모든 DTO 임포트
+import com.apply.diarypic.diary.dto.*;
 import com.apply.diarypic.diary.entity.Diary;
 import com.apply.diarypic.photo.entity.DiaryPhoto;
 import com.apply.diarypic.diary.repository.DiaryRepository;
@@ -55,7 +53,7 @@ public class DiaryService {
     private final KeywordRepository keywordRepository;
     private final PhotoKeywordRepository photoKeywordRepository;
     private final AlbumService albumService;
-    private final DiaryAlbumRepository diaryAlbumRepository; // 직접 사용
+    private final DiaryAlbumRepository diaryAlbumRepository;
 
     private static final DateTimeFormatter ISO_LOCAL_DATE_TIME_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
@@ -100,7 +98,6 @@ public class DiaryService {
         } else {
             setInitialRepresentativePhoto(diary);
         }
-        // diaryRepository.save(diary)는 createAndSaveDiaryAndAlbums 내부 또는 setExplicit/Initial 이후에 호출되어야 함
         return DiaryResponse.from(diaryRepository.save(diary));
     }
 
@@ -154,10 +151,10 @@ public class DiaryService {
                 .emotionIcon(emoji)
                 .diaryDate(diaryDate)
                 .isFavorited(false)
-                .status(isAiGenerated ? "미확인" : "확인") // AI 생성 일기 상태
+                .status(isAiGenerated ? "미확인" : "확인")
                 .diaryPhotos(new ArrayList<>())
                 .build();
-        Diary savedDiary = diaryRepository.save(diary); // 먼저 diary 저장하여 ID 확보
+        Diary savedDiary = diaryRepository.save(diary);
 
         List<DiaryPhoto> newDiaryPhotos = new ArrayList<>();
         if (finalizedPhotoPayloads != null) {
@@ -169,7 +166,7 @@ public class DiaryService {
                 }
                 diaryPhoto.setDiary(savedDiary);
                 diaryPhoto.setSequence(payload.getSequence());
-                newDiaryPhotos.add(diaryPhoto); // 이 단계에서는 컬렉션에만 추가
+                newDiaryPhotos.add(diaryPhoto);
 
                 // 키워드 처리
                 String keywordString = payload.getKeyword();
@@ -197,7 +194,7 @@ public class DiaryService {
         if (!newDiaryPhotos.isEmpty()) {
             albumService.processDiaryAlbums(savedDiary, newDiaryPhotos);
         }
-        return savedDiary; // 변경된 diaryPhotos 컬렉션이 포함된 savedDiary 반환
+        return savedDiary;
     }
 
 
@@ -275,13 +272,12 @@ public class DiaryService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다. ID: " + userId));
 
-        // 검색어 길이 및 null/공백 체크
         if (!StringUtils.hasText(keyword) || keyword.trim().length() < 2) {
             log.info("사용자 ID {}의 검색어가 유효하지 않거나 너무 짧아 (두 글자 미만) 빈 결과를 반환합니다. 검색어: '{}'", userId, keyword);
             return Page.empty(pageable);
         }
 
-        String trimmedKeyword = keyword.trim(); // 앞뒤 공백 제거
+        String trimmedKeyword = keyword.trim();
 
         Page<Diary> foundDiaries = diaryRepository.findByUserAndContentContainingAndDeletedAtIsNull(user, trimmedKeyword, pageable);
         log.info("사용자 ID {}가 키워드 '{}'로 검색하여 {}개의 일기를 찾았습니다.", userId, trimmedKeyword, foundDiaries.getTotalElements());
@@ -298,7 +294,6 @@ public class DiaryService {
                 .orElseThrow(() -> new EntityNotFoundException("삭제할 일기를 찾을 수 없습니다. ID: " + diaryId));
 
         diary.setDeletedAt(LocalDateTime.now());
-        // 소프트 삭제 시 앨범 연결은 AlbumService의 조회 로직에서 deletedAt으로 필터링하므로 DiaryAlbum 레코드 삭제 안 함
         diaryRepository.save(diary);
         log.info("일기 ID {}를 휴지통으로 이동했습니다.", diaryId);
     }
@@ -306,26 +301,17 @@ public class DiaryService {
     @Transactional
     public DiaryResponse restoreDiary(Long userId, Long diaryId) {
         User user = userRepository.findById(userId).orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다."));
-        // 휴지통에 있는 일기를 ID와 사용자로 조회
         Diary diary = diaryRepository.findByIdAndUser(diaryId, user)
                 .filter(d -> d.getDeletedAt() != null) // 휴지통에 있는 것만 대상으로 함
                 .orElseThrow(() -> new EntityNotFoundException("휴지통에서 해당 일기를 찾을 수 없거나 이미 복원된 일기입니다. ID: " + diaryId));
 
-        diary.setDeletedAt(null); // deletedAt을 null로 변경하여 복원
-        // 복원 시 AlbumService.processDiaryAlbums를 다시 호출하여 앨범 관계를 재정립할 수 있으나,
-        // AlbumService의 getDiariesInAlbum이 deletedAt을 필터링하므로, deletedAt을 null로 바꾸는 것만으로도
-        // 앨범에 다시 보이게 됩니다. 단, 앨범 자동 생성/매핑 로직이 복원 시에도 동일하게 적용되어야 한다면 호출 고려.
-        // 현재 AlbumService.processDiaryAlbums는 사진 정보 기반으로 앨범을 매핑하므로,
-        // 복원 시 사진 정보 변경이 없다면 굳이 호출할 필요는 없을 수 있습니다.
-        // 만약 앨범 매핑이 해제되었었다면 (소프트 삭제 시 DiaryAlbum 레코드를 지웠었다면) 여기서 재매핑 필요.
-        // 현재 설계는 DiaryAlbum 레코드를 소프트 삭제 시 지우지 않으므로, deletedAt = null만으로 충분.
+        diary.setDeletedAt(null);
         return DiaryResponse.from(diaryRepository.save(diary));
     }
 
     @Transactional
     public void permanentlyDeleteDiary(Long userId, Long diaryId) {
         User user = userRepository.findById(userId).orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다."));
-        // 휴지통에 있는 일기인지, 그리고 사용자 소유인지 확인하여 조회
         Diary diary = diaryRepository.findByIdAndUserAndDeletedAtIsNotNull(diaryId, user)
                 .orElseThrow(() -> new EntityNotFoundException("휴지통에서 해당 일기를 찾을 수 없거나 영구 삭제할 권한이 없습니다. ID: " + diaryId));
 
@@ -337,17 +323,8 @@ public class DiaryService {
         }
         log.info("일기 ID {}의 S3 사진 파일 삭제 완료.", diaryId);
 
-        // 2. DiaryAlbum 연결 삭제 (Diary 엔티티 삭제 시 CascadeType.REMOVE 또는 orphanRemoval=true로 자동 처리될 수 있음)
-        // 명시적으로 삭제하는 것이 안전할 수 있음.
         diaryAlbumRepository.deleteByDiary(diary);
         log.info("일기 ID {}의 DiaryAlbum 연결 삭제 완료.", diaryId);
-
-        // PhotoKeyword 연결도 DiaryPhoto의 Cascade 설정에 따라 자동으로 처리될 가능성이 높음
-        // 만약 명시적으로 삭제해야 한다면 여기서 photoKeywordRepository.deleteByDiaryPhotoIn(diary.getDiaryPhotos()); 등 처리
-
-        // 3. Diary 엔티티 삭제 (DB에서 최종 삭제)
-        // Diary 엔티티에 DiaryPhoto가 CascadeType.ALL, orphanRemoval=true로 매핑되어 있다면,
-        // diaryRepository.delete(diary) 호출 시 연관된 DiaryPhoto들도 함께 삭제됩니다.
         diaryRepository.delete(diary);
         log.info("일기 ID {} 영구 삭제 완료.", diaryId);
     }
@@ -365,7 +342,6 @@ public class DiaryService {
 
         log.info("사용자 ID {}의 휴지통 비우기 시작. 대상 일기 수: {}", userId, trashedDiaries.size());
         for (Diary diary : trashedDiaries) {
-            // permanentlyDeleteDiary(userId, diary.getId()); // 재귀적 호출 대신 내부 로직 직접 수행
             // S3 파일 삭제
             for (DiaryPhoto photo : diary.getDiaryPhotos()) {
                 if (StringUtils.hasText(photo.getPhotoUrl())) {

@@ -8,7 +8,7 @@ import java.util.Optional;
 
 public interface AlbumRepository extends JpaRepository<Album, Long> {
     Optional<Album> findByNameAndUser(String name, User user);
-    List<Album> findByUserOrderByCreatedAtDesc(User user); // 사용자 앨범 목록 조회 (최신순)
+    List<Album> findByUserOrderByCreatedAtDesc(User user);
 
     void deleteAllByUser(User user);
 }

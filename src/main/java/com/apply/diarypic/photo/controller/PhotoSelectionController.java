@@ -2,8 +2,8 @@ package com.apply.diarypic.photo.controller;
 
 import com.apply.diarypic.global.security.CurrentUser;
 import com.apply.diarypic.global.security.UserPrincipal;
-import com.apply.diarypic.photo.dto.AiPhotoRecommendRequest;  // AI 추천 요청 DTO
-import com.apply.diarypic.photo.dto.AiPhotoRecommendResponse; // AI 추천 응답 DTO
+import com.apply.diarypic.photo.dto.AiPhotoRecommendRequest;
+import com.apply.diarypic.photo.dto.AiPhotoRecommendResponse;
 import com.apply.diarypic.photo.dto.FinalizePhotoSelectionRequest;
 import com.apply.diarypic.photo.dto.PhotoResponse;
 import com.apply.diarypic.photo.service.PhotoRecommendationService;
@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
 public class PhotoSelectionController {
 
     private final PhotoSelectionService photoSelectionService;
-    private final PhotoRecommendationService photoRecommendationService; // 주입
+    private final PhotoRecommendationService photoRecommendationService;
 
     @Operation(summary = "임시 업로드 사진 조회")
     @GetMapping("/temp")
@@ -36,7 +36,7 @@ public class PhotoSelectionController {
 
     @Operation(summary = "AI에게 사진 추천 요청 (최대 9장 구성 위한)")
     @PostMapping("/ai-recommend")
-    public Mono<ResponseEntity<AiPhotoRecommendResponse>> getAiRecommendedPhotos( // 반환 타입 Mono로 변경
+    public Mono<ResponseEntity<AiPhotoRecommendResponse>> getAiRecommendedPhotos(
                                                                                   @CurrentUser UserPrincipal userPrincipal,
                                                                                   @Valid @RequestBody AiPhotoRecommendRequest request) {
 
@@ -45,8 +45,6 @@ public class PhotoSelectionController {
                 request.getUploadedPhotoIds(),
                 request.getMandatoryPhotoIds()
         ).map(recommendedIds -> ResponseEntity.ok(new AiPhotoRecommendResponse(recommendedIds)));
-        // 에러 처리는 PhotoRecommendationService의 onErrorResume에서 처리하거나, 여기서 추가 가능
-        // .onErrorResume(e -> Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()));
     }
 
     @Operation(summary = "최종 사진 선택 확정 (최종 9장 구성)")
@@ -54,7 +52,6 @@ public class PhotoSelectionController {
     public ResponseEntity<List<PhotoResponse>> finalizePhotoSelection(
             @CurrentUser UserPrincipal userPrincipal,
             @Valid @RequestBody FinalizePhotoSelectionRequest request) {
-        // PhotoSelectionService.finalizePhotoSelection이 List<DiaryPhoto>를 반환하면 DTO로 변환
         List<PhotoResponse> finalPhotoResponses = photoSelectionService.finalizePhotoSelection(userPrincipal.getUserId(), request.getPhotoIds())
                 .stream()
                 .map(PhotoResponse::from)

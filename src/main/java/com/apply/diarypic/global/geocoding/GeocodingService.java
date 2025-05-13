@@ -26,7 +26,6 @@ public class GeocodingService {
         this.restTemplate = restTemplate;
     }
 
-    // 파싱된 위치 정보를 담을 내부 DTO
     @Getter
     @Setter
     @RequiredArgsConstructor
@@ -67,15 +66,11 @@ public class GeocodingService {
                         if (types.contains("locality")) {
                             local = component.getLongName();
                         }
-                        // "locality"가 없는 경우, "sublocality_level_1" 등을 차선으로 고려할 수 있음
                         if (local == null && types.contains("sublocality_level_1")) {
                             local = component.getLongName();
                         }
-                        // 더 많은 타입 분석 가능 (예: "political", "sublocality" 조합 등)
                     }
                 }
-                // 만약 locality가 없고 adminAreaLevel1만 있다면, locality에 adminAreaLevel1 값을 사용할 수도 있음(국내 일부 지역)
-                // 혹은 더 구체적인 규칙을 적용하여 primaryCityName을 결정
 
                 log.debug("Geocoded Address: Formatted='{}', Country='{}', AdminArea1='{}', Locality='{}'",
                         formattedAddress, country, adminArea1, local);

@@ -4,11 +4,10 @@ import com.apply.diarypic.diary.entity.Diary;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.io.Serializable;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "diary_albums") // 일기와 앨범의 다대다 관계 매핑 테이블
+@Table(name = "diary_albums")
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

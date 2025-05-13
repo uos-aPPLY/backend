@@ -13,9 +13,9 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AiImageScoringRequestDto {
-    @JsonProperty("images") // AI 서버 Pydantic 모델 필드명과 일치
+    @JsonProperty("images")
     private List<AiPhotoInputDto> images;
 
-    @JsonProperty("reference_images") // AI 서버 Pydantic 모델 필드명과 일치z
+    @JsonProperty("reference_images")
     private List<AiPhotoInputDto> referenceImages;
 }

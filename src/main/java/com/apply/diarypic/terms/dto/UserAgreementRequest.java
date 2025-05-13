@@ -20,8 +20,8 @@ public class UserAgreementRequest {
     @NoArgsConstructor
     public static class AgreementItem {
         @NotNull
-        private Long termsId; // 동의/비동의하는 약관의 ID (Terms 엔티티의 PK)
+        private Long termsId;
         @NotNull
-        private Boolean agreed; // 동의 여부 (true/false)
+        private Boolean agreed;
     }
 }

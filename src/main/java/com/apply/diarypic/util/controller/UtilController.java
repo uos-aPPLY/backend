@@ -1,4 +1,4 @@
-package com.apply.diarypic.util.controller; // 예시 패키지
+package com.apply.diarypic.util.controller;
 
 import com.apply.diarypic.util.dto.DailyQuoteResponse;
 import com.apply.diarypic.util.service.UtilService;
@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/util") // 엔드포인트 경로 예시
+@RequestMapping("/api/util")
 @RequiredArgsConstructor
 public class UtilController {
 

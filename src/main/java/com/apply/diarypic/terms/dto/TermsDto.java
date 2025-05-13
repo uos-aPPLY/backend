@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
 @Builder
 public class TermsDto {
     private Long id;
-    private String termsType; // Enum의 name() 값 또는 description() 값을 저장
+    private String termsType;
     private String title;
     private String content;
     private int version;

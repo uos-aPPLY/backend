@@ -1,6 +1,6 @@
 package com.apply.diarypic.user.service;
 
-import lombok.RequiredArgsConstructor; // 이 어노테이션이 final 필드에 대한 생성자를 만들어줍니다.
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -14,13 +14,12 @@ import java.util.Map;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor // final 필드에 대한 생성자 자동 생성
+@RequiredArgsConstructor
 public class SocialUserInfoService {
 
-    private final WebClient webClient; // final로 선언하고 생성자 주입 (Lombok이 처리)
+    private final WebClient webClient;
 
     public Map getKakaoUserInfo(String accessToken) {
-        // 여기에 기존 getKakaoUserInfo 로직 그대로 사용 (webClient는 주입받은 것 사용)
         return webClient.get()
                 .uri("https://kapi.kakao.com/v2/user/me")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
@@ -40,7 +39,6 @@ public class SocialUserInfoService {
     }
 
     public Map getGoogleUserInfo(String accessToken) {
-        // 여기에 기존 getGoogleUserInfo 로직 그대로 사용 (webClient는 주입받은 것 사용)
         return webClient.get()
                 .uri("https://www.googleapis.com/oauth2/v3/userinfo")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
@@ -60,7 +58,7 @@ public class SocialUserInfoService {
 
     public Map<String, Object> getNaverUserInfo(String accessToken) {
         Map<String, Object> responseMap = webClient.get()
-                .uri("https://openapi.naver.com/v1/nid/me") // 네이버 사용자 정보 요청 URI
+                .uri("https://openapi.naver.com/v1/nid/me")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                 .retrieve()
                 .onStatus(status -> status.is4xxClientError() || status.is5xxServerError(),
@@ -73,9 +71,8 @@ public class SocialUserInfoService {
                                     return Mono.error(new RuntimeException("네이버 API 호출 실패: " + clientResponse.statusCode()));
                                 }))
                 .bodyToMono(Map.class)
-                .block(); // block()은 동기적으로 결과를 기다립니다. 비동기 처리를 원한다면 다른 방식을 고려해야 합니다.
+                .block();
 
-        // 네이버 응답은 response 필드 내에 실제 사용자 정보가 있음
         if (responseMap != null && responseMap.containsKey("response")) {
             return (Map<String, Object>) responseMap.get("response");
         }

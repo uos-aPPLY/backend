@@ -12,6 +12,6 @@ import java.io.Serializable;
 @AllArgsConstructor
 @EqualsAndHashCode
 public class UserTermsAgreementId implements Serializable {
-    private Long user;    // User 엔티티의 id 필드명
-    private Long terms;   // Terms 엔티티의 id 필드명
+    private Long user;
+    private Long terms;
 }

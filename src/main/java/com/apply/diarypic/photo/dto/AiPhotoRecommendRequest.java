@@ -17,5 +17,5 @@ public class AiPhotoRecommendRequest {
     @NotEmpty(message = "업로드된 전체 사진 ID 목록은 비어있을 수 없습니다.")
     private List<Long> uploadedPhotoIds;
 
-    private List<Long> mandatoryPhotoIds; // 비어있을 수 있음
+    private List<Long> mandatoryPhotoIds;
 }

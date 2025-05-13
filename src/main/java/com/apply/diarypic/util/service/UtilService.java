@@ -1,4 +1,4 @@
-package com.apply.diarypic.util.service; // 예시 패키지
+package com.apply.diarypic.util.service;
 
 import com.apply.diarypic.util.dto.DailyQuoteResponse;
 import org.springframework.stereotype.Service;
@@ -26,7 +26,6 @@ public class UtilService {
     public DailyQuoteResponse getDailyQuote() {
         LocalDate today = LocalDate.now();
         DayOfWeek dayOfWeekEnum = today.getDayOfWeek();
-        // dayOfWeekEnum.getValue()는 월요일(1)부터 일요일(7)까지의 int 값을 반환합니다.
         int dayOfWeekValue = dayOfWeekEnum.getValue();
         String quote = dailyQuotes.getOrDefault(dayOfWeekEnum, "오늘 하루도 사진과 함께 소중한 기억을 만들어보세요.");
 

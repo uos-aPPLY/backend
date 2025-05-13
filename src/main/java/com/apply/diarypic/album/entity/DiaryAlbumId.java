@@ -12,6 +12,6 @@ import java.io.Serializable;
 @AllArgsConstructor
 @EqualsAndHashCode
 public class DiaryAlbumId implements Serializable {
-    private Long diary; // Diary 엔티티의 id 필드명
-    private Long album; // Album 엔티티의 id 필드명
+    private Long diary;
+    private Long album;
 }

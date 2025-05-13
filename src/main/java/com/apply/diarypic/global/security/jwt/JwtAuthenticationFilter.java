@@ -14,7 +14,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
-import org.springframework.security.web.context.HttpSessionSecurityContextRepository;   // ★
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -56,13 +56,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
             authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
-            /* ▼▼ SecurityContext 를 두 군데 모두에 저장 ▼▼ */
             SecurityContext context = SecurityContextHolder.createEmptyContext();
             context.setAuthentication(authentication);
-            SecurityContextHolder.setContext(context);                                           // 기존 ThreadLocal
+            SecurityContextHolder.setContext(context);
             request.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY,
-                    context);                                                       // ★ async 디스패치용
-            /* ▲▲ ------------------------------------------------ ▲▲ */
+                    context);
 
             log.debug("SecurityContext populated for user ID: {}", principal.getUserId());
         } else {

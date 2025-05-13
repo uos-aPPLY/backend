@@ -53,7 +53,6 @@ public class KeywordService {
         return KeywordDto.fromEntity(keywordRepository.save(newKeyword));
     }
 
-    // (DTO를 받는 createPersonalKeyword 메소드는 유지 가능 - 키워드 설정 화면용)
     @Transactional
     public KeywordDto createPersonalKeyword(Long userId, KeywordCreateRequest request) {
         return createOrGetPersonalKeyword(userId, request.getName());

@@ -13,7 +13,7 @@ import java.util.List;
 public class GeocodingResult {
 
     @JsonProperty("formatted_address")
-    private String formattedAddress; // 전체 주소 (참고용 또는 DiaryPhoto에서 제외했으므로 여기선 파싱용)
+    private String formattedAddress;
 
     @JsonProperty("address_components")
     private List<AddressComponent> addressComponents;

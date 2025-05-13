@@ -47,7 +47,7 @@ public class DataInitializer implements CommandLineRunner {
                         .content(content)
                         .required(required)
                         .effectiveDate(LocalDateTime.now())
-                        .displayOrder(displayOrder) // displayOrder 설정
+                        .displayOrder(displayOrder)
                         .build();
                 termsRepository.save(term);
                 log.info("약관 '{}' (type: {}, v{}, order:{}) 저장 완료.", title, termsType.name(), version, displayOrder);

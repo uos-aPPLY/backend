@@ -17,7 +17,7 @@ import java.util.Date;
 
 @Slf4j
 @Component
-@Getter // accessTokenExpiresIn 필드 접근 위함
+@Getter
 public class JwtUtils {
 
     @Value("${jwt.secret}")

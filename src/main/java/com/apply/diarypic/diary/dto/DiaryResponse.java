@@ -4,7 +4,7 @@ import com.apply.diarypic.diary.entity.Diary;
 import com.apply.diarypic.photo.dto.PhotoResponse;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import lombok.Data; // @Getter, @Setter, @ToString, @EqualsAndHashCode, @RequiredArgsConstructor를 합친 것
+import lombok.Data;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collections;
@@ -52,7 +52,7 @@ public class DiaryResponse {
 
         if (diary.getDiaryPhotos() != null) {
             response.setPhotos(diary.getDiaryPhotos().stream()
-                    .sorted(Comparator.comparingInt(p -> p.getSequence() != null ? p.getSequence() : Integer.MAX_VALUE)) // null일 경우 마지막으로
+                    .sorted(Comparator.comparingInt(p -> p.getSequence() != null ? p.getSequence() : Integer.MAX_VALUE))
                     .map(PhotoResponse::from)
                     .collect(Collectors.toList()));
         } else {

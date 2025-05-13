@@ -2,7 +2,6 @@ package com.apply.diarypic.user.service;
 
 import com.apply.diarypic.global.security.jwt.JwtUtils;
 import com.apply.diarypic.keyword.service.KeywordService;
-import com.apply.diarypic.terms.service.TermsService;
 import com.apply.diarypic.user.dto.AuthRequest;
 import com.apply.diarypic.user.dto.AuthResponse;
 import com.apply.diarypic.user.dto.UserInfoResponse;
@@ -51,11 +50,11 @@ public class AuthService {
                 snsUserId = (String) userInfoMap.get("sub");
                 socialNickname = (String) userInfoMap.get("name");
                 break;
-            case "naver": // 네이버 케이스 추가
-                snsUserId = (String) userInfoMap.get("id"); // 네이버는 'id' 필드를 사용
-                socialNickname = (String) userInfoMap.get("nickname"); // 네이버는 'nickname' 또는 'name' 필드를 사용 (앱 설정에 따라 확인)
+            case "naver":
+                snsUserId = (String) userInfoMap.get("id");
+                socialNickname = (String) userInfoMap.get("nickname");
                 if (socialNickname == null || socialNickname.isBlank()) {
-                    socialNickname = (String) userInfoMap.get("name"); // 'nickname'이 없으면 'name'을 시도
+                    socialNickname = (String) userInfoMap.get("name");
                 }
                 break;
             default:
@@ -72,7 +71,7 @@ public class AuthService {
 
 
         // 3. DB에서 사용자 조회 또는 생성
-        final String finalProvider = req.provider().toLowerCase(); // 일관성을 위해 소문자로 처리
+        final String finalProvider = req.provider().toLowerCase();
         final String finalSnsUserId = snsUserId;
         final String finalSocialNicknameForNewUser = socialNickname;
 
@@ -84,7 +83,7 @@ public class AuthService {
                             .snsProvider(finalProvider)
                             .snsUserId(finalSnsUserId)
                             .nickname(finalSocialNicknameForNewUser)
-                            .writingStylePrompt("다정하고 친절한 말투로 일기를 작성해줘.") // 기본 말투 프롬프트 (기존 "기본 말투입니다." 에서 변경 가능)
+                            .writingStylePrompt("기본 말투입니다.")
                             .alarmEnabled(false)
                             .build();
                     User savedNewUser = userRepository.save(newUser);

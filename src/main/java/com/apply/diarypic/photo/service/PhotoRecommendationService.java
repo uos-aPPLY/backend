@@ -1,7 +1,6 @@
-package com.apply.diarypic.photo.service; // 또는 com.apply.diarypic.photo.service
+package com.apply.diarypic.photo.service;
 
 import com.apply.diarypic.ai.dto.AiImageScoringRequestDto;
-import com.apply.diarypic.ai.dto.AiImageScoringResponseDto;
 import com.apply.diarypic.ai.dto.AiPhotoInputDto;
 import com.apply.diarypic.ai.service.AiServerService;
 import com.apply.diarypic.photo.entity.DiaryPhoto;
@@ -9,7 +8,7 @@ import com.apply.diarypic.photo.repository.PhotoRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional; // 여전히 필요할 수 있음 (DB 조회 시)
+import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
@@ -27,16 +26,14 @@ public class PhotoRecommendationService {
     private final AiServerService aiServerService;
     private final PhotoRepository photoRepository;
 
-    @Transactional(readOnly = true) // DB 조회는 여전히 트랜잭션 내에서 수행
+    @Transactional(readOnly = true)
     public Mono<List<Long>> getRecommendedPhotosFromAI(Long userId, List<Long> uploadedPhotoIds, List<Long> mandatoryPhotoIds) {
         if (uploadedPhotoIds == null || uploadedPhotoIds.isEmpty()) {
             log.warn("AI 추천 요청 (비동기): 사용자 ID {}에 대해 업로드된 사진 ID 목록이 비어있습니다.", userId);
             return Mono.just(Collections.emptyList());
         }
 
-        // DB 조회는 블로킹 호출이므로, Mono로 감싸거나 Reactor 스케줄러를 사용할 수 있으나,
-        // 여기서는 서비스 메소드 자체가 @Transactional이므로 동기적으로 조회 후 Mono로 변환합니다.
-        // 더 완벽한 Reactive 스택에서는 Repository도 Reactive 타입을 지원해야 합니다.
+
         List<DiaryPhoto> allUserPhotosInRequest = photoRepository.findAllById(uploadedPhotoIds).stream()
                 .filter(photo -> photo.getUserId().equals(userId))
                 .collect(Collectors.toList());

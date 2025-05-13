@@ -22,7 +22,6 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
-    private final OAuth2SuccessHandler oAuth2SuccessHandler;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -35,8 +34,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         /* 인증이 필요 없는 엔드포인트 */
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**",
-                                "/oauth2/**", "/api/auth/login",
-                                "/api/ai/diary/result").permitAll()
+                                "/oauth2/**", "/api/auth/login")
+                        .permitAll()
                         /* 나머지는 인증 */
                         .anyRequest().authenticated()
                 )

@@ -1,6 +1,6 @@
 package com.apply.diarypic.diary.controller;
 
-import com.apply.diarypic.diary.dto.*; // 모든 DTO 임포트
+import com.apply.diarypic.diary.dto.*;
 import com.apply.diarypic.diary.service.DiaryService;
 import com.apply.diarypic.global.security.CurrentUser;
 import com.apply.diarypic.global.security.UserPrincipal;

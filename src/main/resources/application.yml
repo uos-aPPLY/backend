@@ -96,9 +96,6 @@ server:
   servlet:
     context-path: /
 
-ai-server:
-  base-url: http://localhost:8000
-
 # 공통 로깅 설정
 logging:
   level:

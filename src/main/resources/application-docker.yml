@@ -4,3 +4,6 @@ spring:
       on-profile: docker
   datasource:
     url: jdbc:mysql://db:3306/diarypic_db?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+
+ai-server:
+  base-url: http://ai-server:8000

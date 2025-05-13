@@ -40,6 +40,19 @@ services:
     restart: unless-stopped
     networks: [diarypic-net]
 
+  ai-server:
+    build:
+      context: ../ai-server  # 📁 FastAPI 코드가 있는 디렉토리 경로
+      dockerfile: Dockerfile  # ai-server/Dockerfile이 있어야 함
+    container_name: diarypic-ai-server
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../ai-server/.env  # 📄 OpenAI API 키 등 환경 변수 설정
+    restart: unless-stopped
+    networks: [ diarypic-net ]
+
+
 networks:
   diarypic-net:
     driver: bridge

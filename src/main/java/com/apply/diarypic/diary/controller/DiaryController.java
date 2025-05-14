@@ -76,6 +76,36 @@ public class DiaryController {
         return ResponseEntity.ok(response);
     }
 
+    @Operation(summary = "일기 수동 수정 (내용, 이모티콘)")
+    @PatchMapping("/{diaryId}") // 대표사진 변경과 구분하기 위해 HTTP Method는 동일하게, 경로는 기본으로 사용
+    public ResponseEntity<DiaryResponse> updateDiaryManual(
+            @CurrentUser UserPrincipal userPrincipal,
+            @PathVariable Long diaryId,
+            @Valid @RequestBody DiaryManualUpdateRequest request) {
+        DiaryResponse response = diaryService.updateDiaryManual(userPrincipal.getUserId(), diaryId, request);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "AI를 이용한 일기 수정")
+    @PatchMapping("/{diaryId}/ai-modify")
+    public ResponseEntity<DiaryResponse> updateDiaryWithAi(
+            @CurrentUser UserPrincipal userPrincipal,
+            @PathVariable Long diaryId,
+            @Valid @RequestBody DiaryAiUpdateRequest request) {
+        DiaryResponse response = diaryService.updateDiaryWithAiAssistance(userPrincipal.getUserId(), diaryId, request);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "일기 내 사진 목록 전체 수정 (추가, 삭제, 순서 변경)")
+    @PatchMapping("/{diaryId}/photos") // Photo 컬렉션에 대한 변경
+    public ResponseEntity<DiaryResponse> updateDiaryPhotos(
+            @CurrentUser UserPrincipal userPrincipal,
+            @PathVariable Long diaryId,
+            @Valid @RequestBody DiaryPhotosUpdateRequest request) {
+        DiaryResponse response = diaryService.updateDiaryPhotos(userPrincipal.getUserId(), diaryId, request);
+        return ResponseEntity.ok(response);
+    }
+
     @Operation(summary = "일기 삭제 (휴지통으로 이동 - 소프트 삭제)")
     @DeleteMapping("/{diaryId}")
     public ResponseEntity<Void> deleteDiary(@CurrentUser UserPrincipal userPrincipal,

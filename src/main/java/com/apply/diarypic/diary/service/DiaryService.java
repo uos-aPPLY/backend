@@ -1,6 +1,7 @@
 package com.apply.diarypic.diary.service;
 
 import com.apply.diarypic.ai.dto.AiDiaryGenerateRequestDto;
+import com.apply.diarypic.ai.dto.AiDiaryModifyRequestDto;
 import com.apply.diarypic.ai.dto.AiDiaryResponseDto;
 import com.apply.diarypic.ai.dto.ImageInfoDto;
 import com.apply.diarypic.ai.service.AiServerService;
@@ -33,6 +34,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -209,6 +211,69 @@ public class DiaryService {
         return savedDiary;
     }
 
+    @Transactional
+    public DiaryResponse updateDiaryManual(Long userId, Long diaryId, DiaryManualUpdateRequest request) {
+        Diary diary = diaryRepository.findById(diaryId)
+                .orElseThrow(() -> new EntityNotFoundException("수정할 일기를 찾을 수 없습니다. ID: " + diaryId));
+
+        if (!diary.getUser().getId().equals(userId)) {
+            throw new SecurityException("해당 일기에 대한 수정 권한이 없습니다.");
+        }
+
+        boolean updated = false;
+        if (StringUtils.hasText(request.getContent())) {
+            diary.setContent(request.getContent());
+            updated = true;
+        }
+        if (StringUtils.hasText(request.getEmotionIcon())) {
+            diary.setEmotionIcon(request.getEmotionIcon());
+            updated = true;
+        }
+
+        if (updated) {
+            return DiaryResponse.from(diaryRepository.save(diary));
+        }
+        return DiaryResponse.from(diary);
+    }
+
+    @Transactional
+    public DiaryResponse updateDiaryWithAiAssistance(Long userId, Long diaryId, DiaryAiUpdateRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다. ID: " + userId));
+        Diary diary = diaryRepository.findById(diaryId)
+                .orElseThrow(() -> new EntityNotFoundException("수정할 일기를 찾을 수 없습니다. ID: " + diaryId));
+
+        if (!diary.getUser().getId().equals(userId)) {
+            throw new SecurityException("해당 일기에 대한 수정 권한이 없습니다.");
+        }
+
+        String userWritingStyle = user.getWritingStylePrompt();
+        if (!StringUtils.hasText(userWritingStyle)) {
+            userWritingStyle = "오늘 있었던 일을 바탕으로 일기를 작성해줘.";
+        }
+
+        AiDiaryModifyRequestDto aiModifyRequest = new AiDiaryModifyRequestDto(
+                userWritingStyle,
+                request.getMarkedDiaryContent(),
+                request.getUserRequest()
+        );
+
+        // AI 서버에 수정 요청
+        AiDiaryResponseDto aiResponse = aiServerService.requestDiaryModification(aiModifyRequest).block();
+
+        if (aiResponse == null || !StringUtils.hasText(aiResponse.getDiary())) {
+
+            throw new RuntimeException("AI 서버로부터 일기 수정 내용을 받지 못했습니다. 응답 내용: " + (aiResponse != null ? aiResponse.getDiary() : "null"));
+        }
+
+        // AI 서버로부터 받은 내용으로 일기 업데이트
+        diary.setContent(aiResponse.getDiary());
+        if (StringUtils.hasText(aiResponse.getEmoji())) {
+            diary.setEmotionIcon(aiResponse.getEmoji());
+        }
+
+        return DiaryResponse.from(diaryRepository.save(diary));
+    }
 
     private void setExplicitRepresentativePhoto(Diary diary, Long representativePhotoId, Long userId, List<Long> currentDiaryPhotoIds) {
         DiaryPhoto repPhoto = photoRepository.findById(representativePhotoId)
@@ -251,6 +316,97 @@ public class DiaryService {
         }
         diary.setRepresentativePhotoUrl(newRepresentativePhoto.getPhotoUrl());
         return DiaryResponse.from(diaryRepository.save(diary));
+    }
+
+    @Transactional
+    public DiaryResponse updateDiaryPhotos(Long userId, Long diaryId, DiaryPhotosUpdateRequest request) {
+        Diary diary = diaryRepository.findById(diaryId)
+                .orElseThrow(() -> new EntityNotFoundException("일기를 찾을 수 없습니다. ID: " + diaryId));
+
+        if (!diary.getUser().getId().equals(userId)) {
+            throw new SecurityException("해당 일기에 대한 수정 권한이 없습니다.");
+        }
+
+        // --- 1. 요청된 사진 정보 준비 ---
+        List<PhotoAssignmentDto> requestedAssignments = request.getPhotos() == null ? new ArrayList<>() : request.getPhotos();
+        Set<Long> requestedPhotoIds = requestedAssignments.stream()
+                .map(PhotoAssignmentDto::getPhotoId)
+                .collect(Collectors.toSet());
+
+        // --- 2. 기존 사진 정보 및 삭제 처리 ---
+        List<DiaryPhoto> photosToDelete = new ArrayList<>();
+        List<DiaryPhoto> currentDiaryPhotos = new ArrayList<>(diary.getDiaryPhotos()); // 복사본 사용
+
+        String currentRepresentativePhotoUrl = diary.getRepresentativePhotoUrl();
+        Long currentRepresentativePhotoId = null;
+
+        for (DiaryPhoto existingPhoto : currentDiaryPhotos) {
+            if (!requestedPhotoIds.contains(existingPhoto.getId())) {
+                photosToDelete.add(existingPhoto);
+                if (existingPhoto.getPhotoUrl().equals(currentRepresentativePhotoUrl)) {
+                    diary.setRepresentativePhotoUrl(null); // 대표 사진이 삭제되면 null로 설정
+                }
+            }
+            if (existingPhoto.getPhotoUrl().equals(currentRepresentativePhotoUrl)) {
+                currentRepresentativePhotoId = existingPhoto.getId();
+            }
+        }
+
+        // 실제 삭제 처리 (DB + S3)
+        if (!photosToDelete.isEmpty()) {
+            for (DiaryPhoto photo : photosToDelete) {
+                log.info("S3 파일 삭제 시도: {}", photo.getPhotoUrl());
+                s3Uploader.deleteFileByUrl(photo.getPhotoUrl());
+            }
+            diary.getDiaryPhotos().removeAll(photosToDelete);
+        }
+
+        // --- 3. 추가 및 순서 변경 처리 ---
+        List<DiaryPhoto> newFinalDiaryPhotos = new ArrayList<>();
+        Map<Long, DiaryPhoto> existingPhotosMap = diary.getDiaryPhotos().stream()
+                .collect(Collectors.toMap(DiaryPhoto::getId, Function.identity()));
+
+        for (PhotoAssignmentDto assignment : requestedAssignments) {
+            DiaryPhoto photo = photoRepository.findById(assignment.getPhotoId())
+                    .orElseThrow(() -> new EntityNotFoundException("추가하려는 사진을 찾을 수 없습니다. ID: " + assignment.getPhotoId()));
+
+            if (!photo.getUserId().equals(userId)) {
+                throw new SecurityException("다른 사용자의 사진(ID: " + photo.getId() + ")을 일기에 추가할 수 없습니다.");
+            }
+
+            // 사진이 다른 일기에 이미 속해 있는지 확인
+//            if (photo.getDiary() != null && !photo.getDiary().getId().equals(diaryId)) {
+//                throw new IllegalArgumentException("사진(ID: " + photo.getId() + ")은 이미 다른 일기에 속해 있습니다.");
+//            }
+
+            photo.setDiary(diary);
+            photo.setSequence(assignment.getSequence());
+            newFinalDiaryPhotos.add(photo);
+            existingPhotosMap.remove(assignment.getPhotoId());
+        }
+        diary.getDiaryPhotos().clear();
+        diary.getDiaryPhotos().addAll(newFinalDiaryPhotos);
+
+
+        // --- 4. 새로운 대표 사진 설정 ---
+        if (request.getNewRepresentativePhotoId() != null) {
+            Long newRepPhotoId = request.getNewRepresentativePhotoId();
+            DiaryPhoto newRepPhoto = newFinalDiaryPhotos.stream()
+                    .filter(p -> p.getId().equals(newRepPhotoId))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("새로운 대표 사진 ID " + newRepPhotoId + "가 최종 사진 목록에 없습니다."));
+            diary.setRepresentativePhotoUrl(newRepPhoto.getPhotoUrl());
+        } else if (diary.getRepresentativePhotoUrl() == null && !newFinalDiaryPhotos.isEmpty()) {
+            setInitialRepresentativePhoto(diary); // sequence가 가장 낮은 사진을 대표로 설정
+        }
+
+        // --- 5. 앨범 정보 업데이트 ---
+        if (albumService != null) {
+            albumService.processDiaryAlbums(diary, diary.getDiaryPhotos());
+        }
+
+        Diary savedDiary = diaryRepository.save(diary);
+        return DiaryResponse.from(savedDiary);
     }
 
     @Transactional(readOnly = true)

@@ -10,7 +10,6 @@
     git clone https://github.com/uos-aPPLY/backend.git
     cd backend
     ```
-    *   _참고: 이전 가이드와 달리 `cd docker`는 하지 않습니다. 모든 명령어는 프로젝트 루트(`backend` 폴더)에서 실행합니다._
 
 4.  **`.env` 파일 생성 (⭐ 중요 ⭐):**
     *   프로젝트 루트 디렉토리(`backend` 폴더)에 있는 `.env.example` 파일을 복사하여 **같은 위치에 `.env` 라는 이름의 새 파일을 만듭니다.**

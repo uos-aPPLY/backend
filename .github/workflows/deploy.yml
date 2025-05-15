@@ -56,8 +56,6 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /home/ubuntu/diarypic # docker-compose.yml 파일이 있는 경로로 이동
-
             docker-compose pull backend
             docker-compose up -d --force-recreate backend
             docker image prune -f

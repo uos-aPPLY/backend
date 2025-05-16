@@ -1,6 +1,6 @@
 spring:
   profiles:
-    active: local # local or docker
+    active: docker # local or docker
   jackson:
     serialization:
       fail-on-empty-beans: false
@@ -33,10 +33,10 @@ spring:
       region:
         static: ap-northeast-2
       s3:
-        bucket: diarypic-photo
-      credentials:
-        access-key: ${AWS_ACCESS_KEY_ID}
-        secret-key: ${AWS_SECRET_ACCESS_KEY}
+        bucket: diarypic-bucket
+#      credentials:
+#        access-key: ${AWS_ACCESS_KEY_ID}
+#        secret-key: ${AWS_SECRET_ACCESS_KEY}
 
   # 공통 Security 설정
   security:

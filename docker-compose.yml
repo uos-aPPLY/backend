@@ -1,41 +1,61 @@
 version: "3.8"
 
 services:
+  db:
+    image: mysql:8.0
+    environment:
+      - TZ=Asia/Seoul
+    container_name: diarypic-mysql
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "13306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+    networks: [diarypic-net]
+
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
-    image: 036128884442.dkr.ecr.ap-northeast-2.amazonaws.com/diarypic-backend
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: diarypic-backend
+    depends_on:
+      db:
+        condition: service_healthy # DB가 준비된 후 시작
     ports:
       - "8080:8080"
-    env_file:
+    env_file: # backend 서비스가 사용할 환경 변수 파일을 지정
       - .env
     environment:
       - TZ=Asia/Seoul
       - SPRING_PROFILES_ACTIVE=docker
     restart: unless-stopped
     networks: [diarypic-net]
-#    healthcheck:
-#      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
-#      interval: 30s
-#      timeout: 10s
-#      retries: 3
-#      start_period: 60s
 
   ai-server:
-    image: 036128884442.dkr.ecr.ap-northeast-2.amazonaws.com/ai-server
+    build:
+      context: ../ai-server  # 📁 FastAPI 코드가 있는 디렉토리 경로
+      dockerfile: Dockerfile  # ai-server/Dockerfile이 있어야 함
     container_name: diarypic-ai-server
     ports:
       - "8000:8000"
     env_file:
-      - ../ai-server/.env
+      - ../ai-server/.env  # 📄 OpenAI API 키 등 환경 변수 설정
     restart: unless-stopped
-    networks: [diarypic-net]
-#    healthcheck:
-#      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-#      interval: 30s
-#      timeout: 10s
-#      retries: 3
-#      start_period: 30s
+    networks: [ diarypic-net ]
+
 
 networks:
   diarypic-net:
     driver: bridge
+
+volumes:
+  mysql_data:

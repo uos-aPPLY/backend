@@ -2,6 +2,7 @@ package com.apply.diarypic.user.controller;
 
 import com.apply.diarypic.user.dto.AuthRequest;
 import com.apply.diarypic.user.dto.AuthResponse;
+import com.apply.diarypic.user.dto.RefreshTokenRequest; // 추가
 import com.apply.diarypic.user.service.AuthService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -20,5 +21,10 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@RequestBody AuthRequest req) {
         return ResponseEntity.ok(authService.authenticate(req));
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<AuthResponse> refresh(@RequestBody RefreshTokenRequest req) {
+        return ResponseEntity.ok(authService.refreshAccessToken(req.refreshToken()));
     }
 }

@@ -1,4 +1,3 @@
-// ✅ 1. UserPrincipal - 사용자 인증 정보 객체
 package com.apply.diarypic.global.security;
 
 import lombok.Getter;

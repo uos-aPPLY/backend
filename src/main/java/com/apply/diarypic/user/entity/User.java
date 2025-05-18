@@ -35,6 +35,10 @@ public class User {
     @Setter
     private LocalTime alarmTime;
 
+    @Setter
+    @Column(length = 512)
+    private String refreshToken;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -47,5 +51,9 @@ public class User {
     @PreUpdate
     public void onUpdate() {
         this.updatedAt = LocalDateTime.now();
+    }
+
+    public void updateRefreshToken(String refreshToken) {
+        this.refreshToken = refreshToken;
     }
 }

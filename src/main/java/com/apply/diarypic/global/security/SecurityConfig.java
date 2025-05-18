@@ -40,7 +40,8 @@ public class SecurityConfig {
                                 "/v3/api-docs",
                                 "/v3/api-docs/**",
                                 "/oauth2/**",
-                                "/api/auth/login")
+                                "/api/auth/login",
+                                "/api/auth/refresh")
                         .permitAll()
                         /* 나머지는 인증 */
                         .anyRequest().authenticated()

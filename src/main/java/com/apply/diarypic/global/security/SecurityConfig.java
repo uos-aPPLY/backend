@@ -60,7 +60,12 @@ public class SecurityConfig {
     /** 개발용 CORS 설정 */
     private CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration cfg = new CorsConfiguration();
-        cfg.setAllowedOrigins(List.of("http://localhost:8082", "http://localhost:8001", "http://localhost:8000"));
+        cfg.setAllowedOrigins(List.of(
+                "http://localhost:8082",
+                "http://localhost:8081",
+                "http://localhost:8001",
+                "http://localhost:8000",
+                "https://diarypic.com"));
         cfg.setAllowedMethods(List.of(
                 HttpMethod.GET.name(), HttpMethod.POST.name(),
                 HttpMethod.PUT.name(), HttpMethod.PATCH.name(),

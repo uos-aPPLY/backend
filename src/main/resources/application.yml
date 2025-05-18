@@ -87,6 +87,9 @@ google:
 
 springdoc:
   override-with-generic-response: false
+  server:
+    - url: https://diarypic.com
+      description: Diarypic API Server
 
 # 공통 JWT 설정
 jwt:
@@ -98,6 +101,8 @@ server:
   port: 8080
   servlet:
     context-path: /
+  forward-headers-strategy: NATIVE
+
 
 # 공통 로깅 설정
 logging:

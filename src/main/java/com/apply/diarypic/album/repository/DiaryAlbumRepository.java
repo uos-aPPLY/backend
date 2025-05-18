@@ -12,4 +12,6 @@ public interface DiaryAlbumRepository extends JpaRepository<DiaryAlbum, DiaryAlb
     List<DiaryAlbum> findByAlbum(Album album);
     List<DiaryAlbum> findByDiary(Diary diary);
     void deleteByDiary(Diary diary);
+
+    Optional<Object> findByDiaryAndAlbum(Diary diary, Album album);
 }

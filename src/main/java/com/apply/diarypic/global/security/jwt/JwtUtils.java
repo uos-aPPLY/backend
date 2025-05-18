@@ -1,6 +1,7 @@
 package com.apply.diarypic.global.security.jwt;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
@@ -26,12 +27,22 @@ public class JwtUtils {
     @Value("${jwt.expiration-ms}")
     private long accessTokenExpiresIn;
 
+    @Value("${jwt.refresh-secret}")
+    private String refreshSecretString;
+
+    @Value("${jwt.refresh-expiration-ms}")
+    private long refreshTokenExpiresIn;
+
     private SecretKey secretKey;
+    private SecretKey refreshSecretKey;
 
     @PostConstruct
     protected void init() {
         byte[] keyBytes = Base64.getDecoder().decode(secretString);
         this.secretKey = Keys.hmacShaKeyFor(keyBytes);
+
+        byte[] refreshKeyBytes = Base64.getDecoder().decode(refreshSecretString);
+        this.refreshSecretKey = Keys.hmacShaKeyFor(refreshKeyBytes);
     }
 
     public String generateAccessToken(Long userId) {
@@ -45,25 +56,63 @@ public class JwtUtils {
                 .compact();
     }
 
+    public String generateRefreshToken(Long userId) {
+        Date now = new Date();
+        Date exp = new Date(now.getTime() + refreshTokenExpiresIn);
+        return Jwts.builder()
+                .setSubject(String.valueOf(userId))
+                .setIssuedAt(now)
+                .setExpiration(exp)
+                .signWith(refreshSecretKey, SignatureAlgorithm.HS256)
+                .compact();
+    }
+
     public boolean validateToken(String token) {
+        return validateTokenInternal(token, secretKey);
+    }
+
+    public boolean validateRefreshToken(String token) {
+        return validateTokenInternal(token, refreshSecretKey);
+    }
+
+    private boolean validateTokenInternal(String token, SecretKey key) {
         try {
-            Jwts.parserBuilder().setSigningKey(secretKey).build().parseClaimsJws(token);
+            Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token);
             return true;
+        } catch (ExpiredJwtException e) {
+            log.warn("Expired JWT token: {}", e.getMessage());
         } catch (JwtException | IllegalArgumentException e) {
             log.warn("Invalid JWT token: {}", e.getMessage());
-            return false;
         }
+        return false;
     }
 
     public Claims getClaims(String token) {
-        return Jwts.parserBuilder().setSigningKey(secretKey).build().parseClaimsJws(token).getBody();
+        return getClaimsInternal(token, secretKey);
+    }
+
+    public Claims getClaimsFromRefreshToken(String token) {
+        return getClaimsInternal(token, refreshSecretKey);
+    }
+
+    private Claims getClaimsInternal(String token, SecretKey key) {
+        try {
+            return Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token).getBody();
+        } catch (ExpiredJwtException e) {
+            return e.getClaims();
+        }
     }
 
     public Long getUserId(String token) {
         return Long.valueOf(getClaims(token).getSubject());
     }
 
+    public Long getUserIdFromRefreshToken(String token) {
+        return Long.valueOf(getClaimsFromRefreshToken(token).getSubject());
+    }
+
     public String getProvider(String token) {
-        return getClaims(token).get("provider", String.class);
+        Claims claims = getClaims(token);
+        return claims.get("provider", String.class);
     }
 }

@@ -65,7 +65,6 @@ public class PhotoSelectionService {
             } catch (Exception e) {
                 log.error("S3 사진 삭제 실패 (임시로 DB만 삭제 진행): {}", photo.getPhotoUrl(), e);
             }
-            log.warn("S3 사진 삭제 로직이 임시로 비활성화되었습니다. URL: {}", photo.getPhotoUrl());
             photoRepository.delete(photo);
             log.info("DB에서 사진 삭제 성공: ID {}", photo.getId());
         }
@@ -92,8 +91,6 @@ public class PhotoSelectionService {
             log.error("S3 사진 삭제 실패 (임시로 DB만 삭제 진행): {}", photo.getPhotoUrl(), e);
 
         }
-        log.warn("S3 사진 삭제 로직이 임시로 비활성화되었습니다. URL: {}", photo.getPhotoUrl());
-
         photoRepository.delete(photo);
         log.info("DB에서 사진 삭제 성공: ID {}", photoId);
     }

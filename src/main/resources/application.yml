@@ -94,7 +94,9 @@ springdoc:
 # 공통 JWT 설정
 jwt:
   secret: ${JWT_SECRET}
-  expiration-ms: 36000000
+  expiration-ms: 1800000
+  refresh-secret: ${JWT_REFRESH_SECRET}
+  refresh-expiration-ms: 604800000
 
 # 공통 서버 설정
 server:

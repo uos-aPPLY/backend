@@ -5,6 +5,8 @@ import com.apply.diarypic.ai.dto.AiDiaryModifyRequestDto;
 import com.apply.diarypic.ai.dto.AiDiaryResponseDto;
 import com.apply.diarypic.ai.dto.ImageInfoDto;
 import com.apply.diarypic.ai.service.AiServerService;
+import com.apply.diarypic.album.entity.Album;
+import com.apply.diarypic.album.entity.DiaryAlbum;
 import com.apply.diarypic.album.repository.DiaryAlbumRepository;
 import com.apply.diarypic.album.service.AlbumService;
 import com.apply.diarypic.diary.dto.*;
@@ -320,12 +322,15 @@ public class DiaryService {
 
     @Transactional
     public DiaryResponse updateDiaryPhotos(Long userId, Long diaryId, DiaryPhotosUpdateRequest request) {
-        Diary diary = diaryRepository.findById(diaryId)
-                .orElseThrow(() -> new EntityNotFoundException("일기를 찾을 수 없습니다. ID: " + diaryId));
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다. ID: " + userId));
+        Diary diary = diaryRepository.findByIdAndUserAndDeletedAtIsNull(diaryId, user) // 활성 일기만 수정 가능
+                .orElseThrow(() -> new EntityNotFoundException("수정할 일기를 찾을 수 없습니다. ID: " + diaryId));
 
-        if (!diary.getUser().getId().equals(userId)) {
-            throw new SecurityException("해당 일기에 대한 수정 권한이 없습니다.");
-        }
+        // --- 0. 수정 전, 현재 일기가 연결된 앨범들 추적 ---
+        Set<Album> previouslyAffectedAlbums = diaryAlbumRepository.findByDiary(diary).stream()
+                .map(DiaryAlbum::getAlbum)
+                .collect(Collectors.toSet());
 
         // --- 1. 요청된 사진 정보 준비 ---
         List<PhotoAssignmentDto> requestedAssignments = request.getPhotos() == null ? new ArrayList<>() : request.getPhotos();
@@ -335,55 +340,54 @@ public class DiaryService {
 
         // --- 2. 기존 사진 정보 및 삭제 처리 ---
         List<DiaryPhoto> photosToDelete = new ArrayList<>();
-        List<DiaryPhoto> currentDiaryPhotos = new ArrayList<>(diary.getDiaryPhotos()); // 복사본 사용
+        // diary.getDiaryPhotos()를 직접 수정하면 ConcurrentModificationException 발생 가능하므로 복사본 사용
+        List<DiaryPhoto> currentDiaryPhotosCopy = new ArrayList<>(diary.getDiaryPhotos());
 
         String currentRepresentativePhotoUrl = diary.getRepresentativePhotoUrl();
-        Long currentRepresentativePhotoId = null;
 
-        for (DiaryPhoto existingPhoto : currentDiaryPhotos) {
+        for (DiaryPhoto existingPhoto : currentDiaryPhotosCopy) {
             if (!requestedPhotoIds.contains(existingPhoto.getId())) {
                 photosToDelete.add(existingPhoto);
-                if (existingPhoto.getPhotoUrl().equals(currentRepresentativePhotoUrl)) {
+                if (existingPhoto.getPhotoUrl() != null && existingPhoto.getPhotoUrl().equals(currentRepresentativePhotoUrl)) {
                     diary.setRepresentativePhotoUrl(null); // 대표 사진이 삭제되면 null로 설정
                 }
-            }
-            if (existingPhoto.getPhotoUrl().equals(currentRepresentativePhotoUrl)) {
-                currentRepresentativePhotoId = existingPhoto.getId();
             }
         }
 
         // 실제 삭제 처리 (DB + S3)
         if (!photosToDelete.isEmpty()) {
             for (DiaryPhoto photo : photosToDelete) {
-                log.info("S3 파일 삭제 시도: {}", photo.getPhotoUrl());
-                s3Uploader.deleteFileByUrl(photo.getPhotoUrl());
+                if (StringUtils.hasText(photo.getPhotoUrl())) {
+                    log.info("S3 파일 삭제 시도: {}", photo.getPhotoUrl());
+                    s3Uploader.deleteFileByUrl(photo.getPhotoUrl());
+                }
             }
             diary.getDiaryPhotos().removeAll(photosToDelete);
+            log.info("일기 ID {}에서 {}개의 사진 삭제 완료.", diaryId, photosToDelete.size());
         }
 
         // --- 3. 추가 및 순서 변경 처리 ---
         List<DiaryPhoto> newFinalDiaryPhotos = new ArrayList<>();
-        Map<Long, DiaryPhoto> existingPhotosMap = diary.getDiaryPhotos().stream()
-                .collect(Collectors.toMap(DiaryPhoto::getId, Function.identity()));
 
         for (PhotoAssignmentDto assignment : requestedAssignments) {
-            DiaryPhoto photo = photoRepository.findById(assignment.getPhotoId())
-                    .orElseThrow(() -> new EntityNotFoundException("추가하려는 사진을 찾을 수 없습니다. ID: " + assignment.getPhotoId()));
+            Long photoIdToAssign = assignment.getPhotoId();
+            DiaryPhoto photo = diary.getDiaryPhotos().stream()
+                    .filter(dp -> dp.getId().equals(photoIdToAssign))
+                    .findFirst()
+                    .orElseGet(() -> photoRepository.findById(photoIdToAssign)
+                            .orElseThrow(() -> new EntityNotFoundException("추가/수정하려는 사진을 찾을 수 없습니다. ID: " + photoIdToAssign)));
 
             if (!photo.getUserId().equals(userId)) {
-                throw new SecurityException("다른 사용자의 사진(ID: " + photo.getId() + ")을 일기에 추가할 수 없습니다.");
+                throw new SecurityException("다른 사용자의 사진(ID: " + photo.getId() + ")을 일기에 추가/수정할 수 없습니다.");
             }
 
-            // 사진이 다른 일기에 이미 속해 있는지 확인
-//            if (photo.getDiary() != null && !photo.getDiary().getId().equals(diaryId)) {
-//                throw new IllegalArgumentException("사진(ID: " + photo.getId() + ")은 이미 다른 일기에 속해 있습니다.");
-//            }
 
-            photo.setDiary(diary);
+            photo.setDiary(diary); // 현재 일기와 연결
             photo.setSequence(assignment.getSequence());
             newFinalDiaryPhotos.add(photo);
-            existingPhotosMap.remove(assignment.getPhotoId());
         }
+
+        // Diary 엔티티의 사진 목록을 최종 목록으로 업데이트
         diary.getDiaryPhotos().clear();
         diary.getDiaryPhotos().addAll(newFinalDiaryPhotos);
 
@@ -397,15 +401,31 @@ public class DiaryService {
                     .orElseThrow(() -> new IllegalArgumentException("새로운 대표 사진 ID " + newRepPhotoId + "가 최종 사진 목록에 없습니다."));
             diary.setRepresentativePhotoUrl(newRepPhoto.getPhotoUrl());
         } else if (diary.getRepresentativePhotoUrl() == null && !newFinalDiaryPhotos.isEmpty()) {
-            setInitialRepresentativePhoto(diary); // sequence가 가장 낮은 사진을 대표로 설정
+            // 기존 대표사진이 삭제되었고, 새 대표사진 지정이 없으며, 사진이 남아있다면 첫번째 사진을 대표로
+            setInitialRepresentativePhoto(diary);
         }
+        // 만약 대표사진이 지정되지 않았고, 기존 대표사진 URL도 null이 아니고, 해당 사진이 여전히 목록에 있다면 유지됨.
 
-        // --- 5. 앨범 정보 업데이트 ---
+        Diary savedDiary = diaryRepository.save(diary); // 일기 및 DiaryPhoto 변경사항 저장
+        log.info("일기 ID {}의 사진 목록 업데이트 완료.", diaryId);
+
+        // --- 5. 앨범 정보 업데이트 및 빈 앨범 정리 ---
+        // 기존에 연결되었던 앨범과 새롭게 연결될 가능성이 있는 앨범 모두를 대상으로 상태 확인 필요
+        Set<Album> albumsToCheck = new HashSet<>(previouslyAffectedAlbums);
+
         if (albumService != null) {
-            albumService.processDiaryAlbums(diary, diary.getDiaryPhotos());
+            albumService.processDiaryAlbums(savedDiary, new ArrayList<>(savedDiary.getDiaryPhotos())); // 사진 목록이 변경되었으므로 앨범 재처리
+
+            // 재처리 후 현재 일기와 연결된 모든 앨범을 다시 가져옴
+            diaryAlbumRepository.findByDiary(savedDiary).forEach(da -> albumsToCheck.add(da.getAlbum()));
         }
 
-        Diary savedDiary = diaryRepository.save(diary);
+        // 영향을 받았을 가능성이 있는 모든 앨범에 대해 활성 일기 수 체크 및 자동 삭제
+        if (!albumsToCheck.isEmpty()) {
+            log.info("일기 ID {} 수정 후 다음 앨범들의 상태를 확인합니다: {}", diaryId, albumsToCheck.stream().map(Album::getName).collect(Collectors.toList()));
+            albumsToCheck.forEach(albumService::checkAndRemoveAlbumIfEmpty);
+        }
+
         return DiaryResponse.from(savedDiary);
     }
 
@@ -461,29 +481,44 @@ public class DiaryService {
         Diary diary = diaryRepository.findByIdAndUserAndDeletedAtIsNull(diaryId, user)
                 .orElseThrow(() -> new EntityNotFoundException("삭제할 일기를 찾을 수 없습니다. ID: " + diaryId));
 
+        // 일기가 속해있던 앨범 목록 가져옴
+        List<Album> affectedAlbums = diaryAlbumRepository.findByDiary(diary).stream()
+                .map(DiaryAlbum::getAlbum)
+                .collect(Collectors.toList());
+
         diary.setDeletedAt(LocalDateTime.now());
         diaryRepository.save(diary);
         log.info("일기 ID {}를 휴지통으로 이동했습니다.", diaryId);
+
+        // 영향을 받은 앨범들에 대해 활성 일기 수 체크 및 자동 삭제
+        affectedAlbums.forEach(albumService::checkAndRemoveAlbumIfEmpty);
     }
 
     @Transactional
     public DiaryResponse restoreDiary(Long userId, Long diaryId) {
         User user = userRepository.findById(userId).orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다."));
         Diary diary = diaryRepository.findByIdAndUser(diaryId, user)
-                .filter(d -> d.getDeletedAt() != null) // 휴지통에 있는 것만 대상으로 함
+                .filter(d -> d.getDeletedAt() != null)
                 .orElseThrow(() -> new EntityNotFoundException("휴지통에서 해당 일기를 찾을 수 없거나 이미 복원된 일기입니다. ID: " + diaryId));
 
         diary.setDeletedAt(null);
-        return DiaryResponse.from(diaryRepository.save(diary));
+        Diary restoredDiary = diaryRepository.save(diary);
+        log.info("일기 ID {}를 복원했습니다.", diaryId);
+
+        // 복원 후 앨범 재처리 (새로운 앨범이 생성될 수도 있음)
+        // 이 때 diaryPhotos가 null이거나 비어있다면 processDiaryAlbums 내부에서 처리됨.
+        albumService.processDiaryAlbums(restoredDiary, restoredDiary.getDiaryPhotos());
+
+        return DiaryResponse.from(restoredDiary);
     }
 
     @Transactional
     public void permanentlyDeleteDiary(Long userId, Long diaryId) {
         User user = userRepository.findById(userId).orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다."));
-        Diary diary = diaryRepository.findByIdAndUserAndDeletedAtIsNotNull(diaryId, user)
+        Diary diary = diaryRepository.findByIdAndUserAndDeletedAtIsNotNull(diaryId, user) // 휴지통에 있는 일기만 조회
                 .orElseThrow(() -> new EntityNotFoundException("휴지통에서 해당 일기를 찾을 수 없거나 영구 삭제할 권한이 없습니다. ID: " + diaryId));
 
-        // 1. S3에서 사진 파일 삭제
+        // S3에서 사진 파일 삭제
         for (DiaryPhoto photo : diary.getDiaryPhotos()) {
             if (StringUtils.hasText(photo.getPhotoUrl())) {
                 s3Uploader.deleteFileByUrl(photo.getPhotoUrl());
@@ -491,10 +526,20 @@ public class DiaryService {
         }
         log.info("일기 ID {}의 S3 사진 파일 삭제 완료.", diaryId);
 
+        // 일기가 속해있던 앨범 목록을 미리 가져옴
+        List<Album> affectedAlbums = diaryAlbumRepository.findByDiary(diary).stream()
+                .map(DiaryAlbum::getAlbum)
+                .collect(Collectors.toList());
+
+        // DiaryAlbum 연결 삭제
         diaryAlbumRepository.deleteByDiary(diary);
         log.info("일기 ID {}의 DiaryAlbum 연결 삭제 완료.", diaryId);
+
+        // Diary 엔티티 삭제
         diaryRepository.delete(diary);
         log.info("일기 ID {} 영구 삭제 완료.", diaryId);
+
+        affectedAlbums.forEach(albumService::checkAndRemoveAlbumIfEmpty);
     }
 
     @Transactional
@@ -509,6 +554,8 @@ public class DiaryService {
         }
 
         log.info("사용자 ID {}의 휴지통 비우기 시작. 대상 일기 수: {}", userId, trashedDiaries.size());
+        Set<Album> allAffectedAlbums = new HashSet<>();
+
         for (Diary diary : trashedDiaries) {
             // S3 파일 삭제
             for (DiaryPhoto photo : diary.getDiaryPhotos()) {
@@ -516,12 +563,18 @@ public class DiaryService {
                     s3Uploader.deleteFileByUrl(photo.getPhotoUrl());
                 }
             }
+            // 일기가 속해있던 앨범들을 수집
+            diaryAlbumRepository.findByDiary(diary).forEach(da -> allAffectedAlbums.add(da.getAlbum()));
             // DiaryAlbum 연결 삭제
             diaryAlbumRepository.deleteByDiary(diary);
         }
         // 모든 대상 Diary DB에서 한 번에 삭제
         diaryRepository.deleteAll(trashedDiaries);
-        log.info("사용자 ID {}의 휴지통 비우기 완료.", userId);
+        log.info("사용자 ID {}의 휴지통 내 모든 일기 영구 삭제 완료.", userId);
+
+        // 영향을 받은 모든 앨범들에 대해 활성 일기 수 체크 및 자동 삭제
+        allAffectedAlbums.forEach(albumService::checkAndRemoveAlbumIfEmpty);
+        log.info("사용자 ID {}의 휴지통 비우기 후 앨범 정리 완료.", userId);
     }
 
     @Transactional(readOnly = true)
@@ -542,6 +595,8 @@ public class DiaryService {
             return;
         }
         log.info("30일 경과 휴지통 일기 {}개 자동 영구 삭제 시작...", oldTrashedDiaries.size());
+        Set<Album> allAffectedAlbums = new HashSet<>();
+
         for (Diary diary : oldTrashedDiaries) {
             // S3 파일 삭제
             for (DiaryPhoto photo : diary.getDiaryPhotos()) {
@@ -549,11 +604,17 @@ public class DiaryService {
                     s3Uploader.deleteFileByUrl(photo.getPhotoUrl());
                 }
             }
+            // 일기가 속해있던 앨범들을 수집
+            diaryAlbumRepository.findByDiary(diary).forEach(da -> allAffectedAlbums.add(da.getAlbum()));
             // DiaryAlbum 연결 삭제
             diaryAlbumRepository.deleteByDiary(diary);
         }
         // 모든 대상 Diary DB에서 한 번에 삭제
         diaryRepository.deleteAll(oldTrashedDiaries);
         log.info("30일 경과 휴지통 일기 {}개 자동 영구 삭제 완료.", oldTrashedDiaries.size());
+
+        // 영향을 받은 모든 앨범들에 대해 활성 일기 수 체크 및 자동 삭제
+        allAffectedAlbums.forEach(albumService::checkAndRemoveAlbumIfEmpty);
+        log.info("30일 경과 휴지통 일기 자동 영구 삭제 후 앨범 정리 완료.");
     }
 }

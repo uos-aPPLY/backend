@@ -50,12 +50,13 @@ public class AuthService {
                 socialNickname = (String) userInfoMap.get("name");
                 break;
             case "naver":
-                Map<String, Object> responseObj = (Map<String, Object>) userInfoMap.get("response");
-                if (responseObj == null) throw new IllegalStateException("네이버 사용자 정보 응답이 올바르지 않습니다.");
-                snsUserId = (String) responseObj.get("id");
-                socialNickname = (String) responseObj.get("nickname");
+                if (userInfoMap == null) {
+                    throw new IllegalStateException("네이버 사용자 정보 응답이 null입니다 (SocialUserInfoService로부터).");
+                }
+                snsUserId = (String) userInfoMap.get("id");
+                socialNickname = (String) userInfoMap.get("nickname");
                 if (socialNickname == null || socialNickname.isBlank()) {
-                    socialNickname = (String) responseObj.get("name");
+                    socialNickname = (String) userInfoMap.get("name");
                 }
                 break;
             default:

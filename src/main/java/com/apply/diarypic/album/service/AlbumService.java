@@ -144,7 +144,7 @@ public class AlbumService {
             if (StringUtils.hasText(adminAreaLevel1)) return adminAreaLevel1;
             return countryName;
         } else {
-            if (StringUtils.hasText(adminAreaLevel1)) return countryName + " - " + adminAreaLevel1;
+//            if (StringUtils.hasText(adminAreaLevel1)) return countryName + " - " + adminAreaLevel1;
             return countryName;
         }
     }

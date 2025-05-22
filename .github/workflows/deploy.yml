@@ -1,4 +1,5 @@
-name: Deploy Backend to EC2
+
+name: PicoBox Backend CI/CD
 
 on:
   push:
@@ -7,45 +8,86 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    env:
-      ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
-      ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_BACKEND }}
-      IMAGE_TAG: ${{ github.sha }}
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v3
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
         with:
-          distribution: corretto
-          java-version: '17'
+          java-version: '21'
+          distribution: 'temurin'
 
-      - run: chmod +x ./gradlew
-      - run: ./gradlew bootJar
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
 
-      - uses: aws-actions/configure-aws-credentials@v2
+      - name: Build with Gradle
+        run: ./gradlew build -x test # build/libs/BE_Picobox-버전.jar 와 같은 파일 생성
+
+      - name: SCP JAR to EC2
+        # main 브랜치 push 시에만 실행
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: appleboy/scp-action@master
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ secrets.AWS_REGION }}
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          source: "build/libs/BE_Picobox-*.jar" # GitHub Runner의 빌드된 JAR 경로
+          # 실제 생성되는 JAR 파일명 패턴 확인 필요!
+          target: "/home/${{ secrets.EC2_USERNAME }}/" # EC2에 복사될 디렉토리
+          overwrite: true # 같은 이름의 파일이 있다면 덮어쓰기
 
-      - uses: aws-actions/amazon-ecr-login@v1
-
-      - name: Build, tag, and push image to Amazon ECR
-        run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          docker tag  $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
-                      $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-
-      - name: Deploy to EC2
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Execute deployment script on EC2
+        # main 브랜치 push 시에만 실행
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: appleboy/ssh-action@master
         with:
-          host:     ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key:      ${{ secrets.SSH_PRIVATE_KEY }}
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           script: |
-            docker compose pull backend
-            docker compose up -d --wait --force-recreate --remove-orphans backend
-            docker image prune -f
+            set -e # 스크립트 실행 중 오류 발생 시 즉시 중단
+            
+            EC2_HOME_DIR="/home/${{ secrets.EC2_USERNAME }}"
+            TARGET_JAR_NAME="app.jar"
+            # scp-action에 의해 복사된 JAR 파일의 이름 패턴
+            # source에서 BE_Picobox-*.jar를 사용했으므로 EC2에서도 동일한 패턴으로 찾습니다.
+            JAR_FILE_PATTERN="BE_Picobox-*.jar" 
+
+            cd $EC2_HOME_DIR
+            
+            echo "Looking for JAR file matching pattern: $JAR_FILE_PATTERN in $(pwd)"
+            # 디버깅을 위해 현재 디렉토리의 파일 목록을 출력해볼 수 있습니다.
+            # ls -la 
+            
+            # scp-action이 복사한 파일 중 -plain.jar가 아닌 최신 파일을 찾습니다.
+            COPIED_JAR_NAME=$(ls -t $JAR_FILE_PATTERN | grep -v -- '-plain\.jar$' | head -n 1)
+
+            if [ -z "$COPIED_JAR_NAME" ]; then
+              echo "Error: No suitable JAR file found in $EC2_HOME_DIR matching pattern '$JAR_FILE_PATTERN' after SCP!"
+              ALL_JARS_FOUND=$(ls -t *.jar | grep -v -- '-plain\.jar$' | head -n 1) # 혹시 패턴이 잘못되었을 경우를 대비한 일반적인 .jar 검색
+              if [ -z "$ALL_JARS_FOUND" ]; then
+                 echo "Error: No suitable JAR file found at all in $EC2_HOME_DIR!"
+                 exit 1
+              else
+                 echo "Warning: Using generic *.jar pattern as fallback: $ALL_JARS_FOUND"
+                 COPIED_JAR_NAME=$ALL_JARS_FOUND
+              fi
+            fi
+            
+            echo "Found JAR: $COPIED_JAR_NAME. Renaming it to $TARGET_JAR_NAME."
+            rm -f $TARGET_JAR_NAME 
+            mv "$COPIED_JAR_NAME" $TARGET_JAR_NAME 
+            
+            echo "Restarting picobox-backend service on EC2..."
+            sudo systemctl restart picobox-backend.service
+            
+            echo "Service restart command executed. Waiting for service to come up..."
+            sleep 20 
+            
+            echo "Checking service status..."
+            sudo systemctl status picobox-backend.service || echo "Service status check indicated an issue or service is not fully up yet."
+            
+            echo "Tailing application log (last 50 lines)..."
+            tail -n 50 /home/ec2-user/app.log || echo "app.log not found or empty."

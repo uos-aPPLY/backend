@@ -27,6 +27,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
@@ -111,47 +112,274 @@ public class DiaryService {
         return DiaryResponse.from(diaryRepository.save(diary));
     }
 
-    @Transactional
-    public DiaryResponse createDiaryWithAiAssistance(Long userId, AiDiaryCreateRequest aiDiaryCreateRequest) {
-        User user = userRepository.findById(userId).orElseThrow(() -> new EntityNotFoundException("User not found: " + userId));
-        String userWritingStyle = user.getWritingStylePrompt();
-        if (!StringUtils.hasText(userWritingStyle)) userWritingStyle = "오늘 있었던 일을 바탕으로 일기를 작성해줘.";
+//    @Transactional
+//    public DiaryResponse createDiaryWithAiAssistance(Long userId, AiDiaryCreateRequest aiDiaryCreateRequest) {
+//        User user = userRepository.findById(userId).orElseThrow(() -> new EntityNotFoundException("User not found: " + userId));
+//        String userWritingStyle = user.getWritingStylePrompt();
+//        if (!StringUtils.hasText(userWritingStyle)) userWritingStyle = "오늘 있었던 일을 바탕으로 일기를 작성해줘.";
+//
+//        LocalDate diaryDate = aiDiaryCreateRequest.getDiaryDate();
+//        if (diaryDate == null) diaryDate = LocalDate.now();
+//
+//        List<AiDiaryCreateRequest.FinalizedPhotoPayload> finalizedPhotoPayloads = aiDiaryCreateRequest.getFinalizedPhotos();
+//        if (finalizedPhotoPayloads == null || finalizedPhotoPayloads.isEmpty() || finalizedPhotoPayloads.size() > 9) {
+//            throw new IllegalArgumentException("사진 정보가 올바르지 않습니다.");
+//        }
+//
+//        List<ImageInfoDto> imageInfoForAi = finalizedPhotoPayloads.stream()
+//                .map(payload -> {
+//                    DiaryPhoto diaryPhoto = photoRepository.findById(payload.getPhotoId()).orElseThrow(() -> new IllegalArgumentException("Photo not found: " + payload.getPhotoId()));
+//                    if (!diaryPhoto.getUserId().equals(userId)) throw new SecurityException("Photo access denied: " + payload.getPhotoId());
+//                    String combinedAddress = Stream.of(diaryPhoto.getLocality(), diaryPhoto.getAdminAreaLevel1(), diaryPhoto.getCountryName())
+//                            .filter(StringUtils::hasText).collect(Collectors.joining(", "));
+//                    return new ImageInfoDto(diaryPhoto.getPhotoUrl(), diaryPhoto.getShootingDateTime() != null ? diaryPhoto.getShootingDateTime().format(ISO_LOCAL_DATE_TIME_FORMATTER) : null,
+//                            StringUtils.hasText(combinedAddress) ? combinedAddress : null, payload.getKeyword(), payload.getSequence());
+//                }).collect(Collectors.toList());
+//
+//        AiDiaryGenerateRequestDto aiRequest = new AiDiaryGenerateRequestDto(userWritingStyle, imageInfoForAi);
+//        AiDiaryResponseDto aiResponse = aiServerService.requestDiaryGeneration(aiRequest).block();
+//
+//        if (aiResponse == null || !StringUtils.hasText(aiResponse.getDiary())) {
+//            throw new RuntimeException("AI 서버로부터 일기 내용을 생성하지 못했습니다.");
+//        }
+//        String autoContent = aiResponse.getDiary();
+//        String autoEmoji = aiResponse.getEmoji();
+//
+//        Diary diary = createAndSaveDiaryAndAlbums(user, autoContent, autoEmoji, diaryDate, finalizedPhotoPayloads, userId, true);
+//
+//        if (aiDiaryCreateRequest.getRepresentativePhotoId() != null) {
+//            setExplicitRepresentativePhoto(diary, aiDiaryCreateRequest.getRepresentativePhotoId(), userId, finalizedPhotoPayloads.stream().map(AiDiaryCreateRequest.FinalizedPhotoPayload::getPhotoId).collect(Collectors.toList()));
+//        } else {
+//            setInitialRepresentativePhoto(diary);
+//        }
+//        return DiaryResponse.from(diaryRepository.save(diary));
+//    }
 
+    @Transactional // 초기 Diary 객체 저장까지는 트랜잭션 내에서 수행
+    public DiaryResponse requestAiDiaryCreation(Long userId, AiDiaryCreateRequest aiDiaryCreateRequest) {
+        User user = userRepository.findById(userId).orElseThrow(() -> new EntityNotFoundException("User not found: " + userId));
         LocalDate diaryDate = aiDiaryCreateRequest.getDiaryDate();
         if (diaryDate == null) diaryDate = LocalDate.now();
+
+        Optional<Diary> existingDiaryOpt = diaryRepository.findByUserAndDiaryDateAndDeletedAtIsNull(user, diaryDate);
+        if (existingDiaryOpt.isPresent()) {
+            Diary existingDiary = existingDiaryOpt.get();
+            if ("generating".equalsIgnoreCase(existingDiary.getStatus())) {
+                throw new IllegalStateException("해당 날짜(" + diaryDate + ")의 일기가 이미 생성 중입니다.");
+            }
+            throw new IllegalArgumentException("해당 날짜(" + diaryDate + ")에 이미 일기가 존재합니다. ID: " + existingDiary.getId());
+        }
 
         List<AiDiaryCreateRequest.FinalizedPhotoPayload> finalizedPhotoPayloads = aiDiaryCreateRequest.getFinalizedPhotos();
         if (finalizedPhotoPayloads == null || finalizedPhotoPayloads.isEmpty() || finalizedPhotoPayloads.size() > 9) {
             throw new IllegalArgumentException("사진 정보가 올바르지 않습니다.");
         }
 
-        List<ImageInfoDto> imageInfoForAi = finalizedPhotoPayloads.stream()
-                .map(payload -> {
-                    DiaryPhoto diaryPhoto = photoRepository.findById(payload.getPhotoId()).orElseThrow(() -> new IllegalArgumentException("Photo not found: " + payload.getPhotoId()));
-                    if (!diaryPhoto.getUserId().equals(userId)) throw new SecurityException("Photo access denied: " + payload.getPhotoId());
-                    String combinedAddress = Stream.of(diaryPhoto.getLocality(), diaryPhoto.getAdminAreaLevel1(), diaryPhoto.getCountryName())
-                            .filter(StringUtils::hasText).collect(Collectors.joining(", "));
-                    return new ImageInfoDto(diaryPhoto.getPhotoUrl(), diaryPhoto.getShootingDateTime() != null ? diaryPhoto.getShootingDateTime().format(ISO_LOCAL_DATE_TIME_FORMATTER) : null,
-                            StringUtils.hasText(combinedAddress) ? combinedAddress : null, payload.getKeyword(), payload.getSequence());
-                }).collect(Collectors.toList());
+        Diary newDiary = Diary.builder()
+                .user(user)
+                .diaryDate(diaryDate)
+                .status("generating")
+                .content("")
+                .emotionIcon("smile")
+                .isFavorited(false)
+                .diaryPhotos(new ArrayList<>())
+                .build();
+        Diary generatingDiary = diaryRepository.save(newDiary);
+        log.info("일기 ID {} (날짜: {}) 'generating' 상태로 저장됨.", generatingDiary.getId(), diaryDate);
 
-        AiDiaryGenerateRequestDto aiRequest = new AiDiaryGenerateRequestDto(userWritingStyle, imageInfoForAi);
-        AiDiaryResponseDto aiResponse = aiServerService.requestDiaryGeneration(aiRequest).block();
-
-        if (aiResponse == null || !StringUtils.hasText(aiResponse.getDiary())) {
-            throw new RuntimeException("AI 서버로부터 일기 내용을 생성하지 못했습니다.");
+        List<DiaryPhoto> tempDiaryPhotos = new ArrayList<>();
+        for (AiDiaryCreateRequest.FinalizedPhotoPayload payload : finalizedPhotoPayloads) {
+            DiaryPhoto diaryPhoto = photoRepository.findById(payload.getPhotoId())
+                    .orElseThrow(() -> new IllegalArgumentException("Photo not found: " + payload.getPhotoId()));
+            if (!diaryPhoto.getUserId().equals(userId)) {
+                throw new SecurityException("Photo access denied: " + payload.getPhotoId());
+            }
+            diaryPhoto.setDiary(generatingDiary);
+            diaryPhoto.setSequence(payload.getSequence());
+            tempDiaryPhotos.add(diaryPhoto);
         }
-        String autoContent = aiResponse.getDiary();
-        String autoEmoji = aiResponse.getEmoji();
+        generatingDiary.getDiaryPhotos().addAll(tempDiaryPhotos);
+        diaryRepository.save(generatingDiary); // DiaryPhoto 연결 업데이트
 
-        Diary diary = createAndSaveDiaryAndAlbums(user, autoContent, autoEmoji, diaryDate, finalizedPhotoPayloads, userId, true);
+        processAiDiaryGeneration(user, generatingDiary.getId(), aiDiaryCreateRequest, finalizedPhotoPayloads);
 
-        if (aiDiaryCreateRequest.getRepresentativePhotoId() != null) {
-            setExplicitRepresentativePhoto(diary, aiDiaryCreateRequest.getRepresentativePhotoId(), userId, finalizedPhotoPayloads.stream().map(AiDiaryCreateRequest.FinalizedPhotoPayload::getPhotoId).collect(Collectors.toList()));
-        } else {
-            setInitialRepresentativePhoto(diary);
+        // Presigned URL을 사용하지 않으므로 S3Uploader와 만료시간 전달 불필요
+        return DiaryResponse.from(generatingDiary);
+    }
+
+    @Transactional
+    public DiaryResponse requestAiDiaryModification(Long userId, Long diaryId, DiaryAiUpdateRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다. ID: " + userId));
+        Diary diary = diaryRepository.findByIdAndUserAndDeletedAtIsNull(diaryId, user)
+                .orElseThrow(() -> new EntityNotFoundException("수정할 일기를 찾을 수 없습니다. ID: " + diaryId));
+
+        if ("generating".equalsIgnoreCase(diary.getStatus())) {
+            throw new IllegalStateException("해당 일기는 현재 AI 처리 중입니다. 잠시 후 다시 시도해주세요.");
         }
-        return DiaryResponse.from(diaryRepository.save(diary));
+
+        String originalStatus = diary.getStatus();
+        diary.setStatus("generating");
+        Diary generatingDiary = diaryRepository.save(diary);
+        log.info("일기 ID {} 'generating' (for modification) 상태로 업데이트됨.", diaryId);
+
+        processAiDiaryModification(user, generatingDiary.getId(), request, originalStatus);
+
+        // Presigned URL을 사용하지 않으므로 S3Uploader와 만료시간 전달 불필요
+        return DiaryResponse.from(generatingDiary);
+    }
+
+
+    @Async
+    @Transactional
+    public void processAiDiaryGeneration(User user, Long diaryId, AiDiaryCreateRequest aiDiaryCreateRequest, List<AiDiaryCreateRequest.FinalizedPhotoPayload> finalizedPhotoPayloads) {
+        log.info("비동기 AI 일기 생성 시작: Diary ID {}", diaryId);
+        Diary diaryToUpdate = diaryRepository.findById(diaryId)
+                .orElse(null);
+
+        if (diaryToUpdate == null || !"generating".equalsIgnoreCase(diaryToUpdate.getStatus())) {
+            log.warn("비동기 AI 일기 생성 중단: Diary ID {}를 찾을 수 없거나 상태가 'generating'이 아님 (현재 상태: {}).", diaryId, diaryToUpdate != null ? diaryToUpdate.getStatus() : "null");
+            return;
+        }
+
+        try {
+            String userWritingStyle = user.getWritingStylePrompt();
+            if (!StringUtils.hasText(userWritingStyle)) userWritingStyle = "오늘 있었던 일을 바탕으로 일기를 작성해줘.";
+
+            List<ImageInfoDto> imageInfoForAi = finalizedPhotoPayloads.stream()
+                    .map(payload -> {
+                        DiaryPhoto diaryPhoto = photoRepository.findById(payload.getPhotoId())
+                                .orElseThrow(() -> new IllegalArgumentException("Photo not found: " + payload.getPhotoId()));
+                        String publicImageUrl = diaryPhoto.getPhotoUrl();
+                        String combinedAddress = Stream.of(diaryPhoto.getLocality(), diaryPhoto.getAdminAreaLevel1(), diaryPhoto.getCountryName())
+                                .filter(StringUtils::hasText).collect(Collectors.joining(", "));
+                        return new ImageInfoDto(
+                                publicImageUrl,
+                                diaryPhoto.getShootingDateTime() != null ? diaryPhoto.getShootingDateTime().format(ISO_LOCAL_DATE_TIME_FORMATTER) : null,
+                                StringUtils.hasText(combinedAddress) ? combinedAddress : null, payload.getKeyword(), payload.getSequence());
+                    }).collect(Collectors.toList());
+
+            AiDiaryGenerateRequestDto aiRequest = new AiDiaryGenerateRequestDto(userWritingStyle, imageInfoForAi);
+
+            aiServerService.requestDiaryGeneration(aiRequest)
+                    .subscribe(aiResponse -> {
+                        if (aiResponse != null && StringUtils.hasText(aiResponse.getDiary())) {
+                            diaryToUpdate.setContent(aiResponse.getDiary());
+                            diaryToUpdate.setEmotionIcon(aiResponse.getEmoji());
+                            diaryToUpdate.setStatus("unconfirmed");
+
+                            albumService.processDiaryAlbums(diaryToUpdate, new ArrayList<>(diaryToUpdate.getDiaryPhotos()));
+
+                            if (aiDiaryCreateRequest.getRepresentativePhotoId() != null) {
+                                setExplicitRepresentativePhoto(diaryToUpdate, aiDiaryCreateRequest.getRepresentativePhotoId(), user.getId(), finalizedPhotoPayloads.stream().map(AiDiaryCreateRequest.FinalizedPhotoPayload::getPhotoId).collect(Collectors.toList()));
+                            } else {
+                                setInitialRepresentativePhoto(diaryToUpdate);
+                            }
+                            diaryRepository.save(diaryToUpdate); // 최종 저장
+                            log.info("비동기 AI 일기 생성 완료: Diary ID {}", diaryId);
+                        } else {
+                            log.error("비동기 AI 일기 생성 실패 (AI 응답 없음): Diary ID {}", diaryId);
+                            diaryToUpdate.setStatus("failed");
+                            diaryRepository.save(diaryToUpdate);
+                        }
+                    }, error -> {
+                        log.error("비동기 AI 일기 생성 중 구독 오류: Diary ID {}. Error: {}", diaryId, error.getMessage());
+                        Diary diaryOnError = diaryRepository.findById(diaryId).orElse(null);
+                        if (diaryOnError != null) {
+                            diaryOnError.setStatus("failed");
+                            diaryOnError.setContent("AI 일기 생성 중 오류가 발생했습니다: " + error.getMessage());
+                            diaryRepository.save(diaryOnError);
+                        }
+                    });
+
+        } catch (Exception e) {
+            log.error("비동기 AI 일기 생성 로직 실행 중 예외: Diary ID {}. Error: {}", diaryId, e.getMessage(), e);
+            Diary diaryOnOuterException = diaryRepository.findById(diaryId).orElse(null);
+            if (diaryOnOuterException != null && "generating".equalsIgnoreCase(diaryOnOuterException.getStatus())) {
+                diaryOnOuterException.setStatus("failed");
+                diaryOnOuterException.setContent("AI 일기 생성 준비 중 시스템 오류가 발생했습니다.");
+                diaryRepository.save(diaryOnOuterException);
+            }
+        }
+    }
+
+
+    @Async
+    @Transactional
+    public void processAiDiaryModification(User user, Long diaryId, DiaryAiUpdateRequest request, String originalStatus) {
+        log.info("비동기 AI 일기 수정 시작: Diary ID {}", diaryId);
+        Diary diaryToUpdate = diaryRepository.findById(diaryId).orElse(null);
+
+        if (diaryToUpdate == null || !"generating".equalsIgnoreCase(diaryToUpdate.getStatus())) {
+            log.warn("비동기 AI 일기 수정 중단: Diary ID {}를 찾을 수 없거나 상태가 'generating'이 아님 (현재 상태: {}).", diaryId, diaryToUpdate != null ? diaryToUpdate.getStatus() : "null");
+            // 원래 상태로 복구 시도 (선택적)
+            if (diaryToUpdate != null && StringUtils.hasText(originalStatus)) {
+                diaryToUpdate.setStatus(originalStatus);
+                diaryRepository.save(diaryToUpdate);
+            }
+            return;
+        }
+
+        try {
+            String userWritingStyle = user.getWritingStylePrompt();
+            if (!StringUtils.hasText(userWritingStyle)) {
+                userWritingStyle = "오늘 있었던 일을 바탕으로 일기를 작성해줘.";
+            }
+
+            AiDiaryModifyRequestDto aiModifyRequest = new AiDiaryModifyRequestDto(
+                    userWritingStyle,
+                    request.getMarkedDiaryContent(),
+                    request.getUserRequest()
+            );
+
+            aiServerService.requestDiaryModification(aiModifyRequest)
+                    .subscribe(aiResponse -> {
+                        if (aiResponse != null && StringUtils.hasText(aiResponse.getDiary())) {
+                            diaryToUpdate.setContent(aiResponse.getDiary());
+                            if (StringUtils.hasText(aiResponse.getEmoji())) {
+                                diaryToUpdate.setEmotionIcon(aiResponse.getEmoji());
+                            }
+                            diaryToUpdate.setStatus("unconfirmed"); // 또는 originalStatus (사용자가 확인했었다면)
+                            diaryRepository.save(diaryToUpdate);
+                            log.info("비동기 AI 일기 수정 완료: Diary ID {}", diaryId);
+                        } else {
+                            log.error("비동기 AI 일기 수정 실패: AI 서버로부터 유효한 응답을 받지 못함. Diary ID {}", diaryId);
+                            diaryToUpdate.setStatus(originalStatus); // 실패 시 원래 상태로 롤백
+                            diaryRepository.save(diaryToUpdate);
+                        }
+                    }, error -> {
+                        log.error("비동기 AI 일기 수정 중 오류 발생: Diary ID {}. Error: {}", diaryId, error.getMessage());
+                        Diary diaryOnError = diaryRepository.findById(diaryId).orElse(null);
+                        if (diaryOnError != null) {
+                            diaryOnError.setStatus(originalStatus); // 실패 시 원래 상태로 롤백
+                            // diaryOnError.setContent(diaryOnError.getContent() + "\n\n[AI 수정 실패: " + error.getMessage() + "]");
+                            diaryRepository.save(diaryOnError);
+                        }
+                    });
+        } catch (Exception e) {
+            log.error("비동기 AI 일기 수정 로직 실행 중 예외 발생: Diary ID {}. Error: {}", diaryId, e.getMessage(), e);
+            diaryToUpdate.setStatus(originalStatus);
+            // diaryToUpdate.setContent(diaryToUpdate.getContent() + "\n\n[AI 수정 준비 중 오류: " + e.getMessage() + "]");
+            diaryRepository.save(diaryToUpdate);
+        }
+    }
+
+    // --- 일기 상태 확인용 서비스 메소드 ---
+    @Transactional(readOnly = true)
+    public DiaryStatusResponse getDiaryStatusByDate(Long userId, LocalDate date) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다. ID: " + userId));
+        Optional<Diary> diaryOpt = diaryRepository.findByUserAndDiaryDateAndDeletedAtIsNull(user, date);
+
+        if (diaryOpt.isEmpty()) {
+            return new DiaryStatusResponse(date.toString(), "none", null);
+        }
+        Diary diary = diaryOpt.get();
+        String status = diary.getStatus() != null ? diary.getStatus().toLowerCase() : "unconfirmed"; // 기본값 또는 null 처리
+        if ("generating".equals(status)) {
+            return new DiaryStatusResponse(date.toString(), "generating", diary.getId());
+        }
+        return new DiaryStatusResponse(date.toString(), "exists", diary.getId());
     }
 
     private Diary createAndSaveDiaryAndAlbums(User user, String content, String emoji, LocalDate diaryDate, List<AiDiaryCreateRequest.FinalizedPhotoPayload> finalizedPhotoPayloads, Long userId, boolean isAiGenerated) {
@@ -238,44 +466,44 @@ public class DiaryService {
         return DiaryResponse.from(diary);
     }
 
-    @Transactional
-    public DiaryResponse updateDiaryWithAiAssistance(Long userId, Long diaryId, DiaryAiUpdateRequest request) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다. ID: " + userId));
-        Diary diary = diaryRepository.findById(diaryId)
-                .orElseThrow(() -> new EntityNotFoundException("수정할 일기를 찾을 수 없습니다. ID: " + diaryId));
-
-        if (!diary.getUser().getId().equals(userId)) {
-            throw new SecurityException("해당 일기에 대한 수정 권한이 없습니다.");
-        }
-
-        String userWritingStyle = user.getWritingStylePrompt();
-        if (!StringUtils.hasText(userWritingStyle)) {
-            userWritingStyle = "오늘 있었던 일을 바탕으로 일기를 작성해줘.";
-        }
-
-        AiDiaryModifyRequestDto aiModifyRequest = new AiDiaryModifyRequestDto(
-                userWritingStyle,
-                request.getMarkedDiaryContent(),
-                request.getUserRequest()
-        );
-
-        // AI 서버에 수정 요청
-        AiDiaryResponseDto aiResponse = aiServerService.requestDiaryModification(aiModifyRequest).block();
-
-        if (aiResponse == null || !StringUtils.hasText(aiResponse.getDiary())) {
-
-            throw new RuntimeException("AI 서버로부터 일기 수정 내용을 받지 못했습니다. 응답 내용: " + (aiResponse != null ? aiResponse.getDiary() : "null"));
-        }
-
-        // AI 서버로부터 받은 내용으로 일기 업데이트
-        diary.setContent(aiResponse.getDiary());
-        if (StringUtils.hasText(aiResponse.getEmoji())) {
-            diary.setEmotionIcon(aiResponse.getEmoji());
-        }
-
-        return DiaryResponse.from(diaryRepository.save(diary));
-    }
+//    @Transactional
+//    public DiaryResponse updateDiaryWithAiAssistance(Long userId, Long diaryId, DiaryAiUpdateRequest request) {
+//        User user = userRepository.findById(userId)
+//                .orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다. ID: " + userId));
+//        Diary diary = diaryRepository.findById(diaryId)
+//                .orElseThrow(() -> new EntityNotFoundException("수정할 일기를 찾을 수 없습니다. ID: " + diaryId));
+//
+//        if (!diary.getUser().getId().equals(userId)) {
+//            throw new SecurityException("해당 일기에 대한 수정 권한이 없습니다.");
+//        }
+//
+//        String userWritingStyle = user.getWritingStylePrompt();
+//        if (!StringUtils.hasText(userWritingStyle)) {
+//            userWritingStyle = "오늘 있었던 일을 바탕으로 일기를 작성해줘.";
+//        }
+//
+//        AiDiaryModifyRequestDto aiModifyRequest = new AiDiaryModifyRequestDto(
+//                userWritingStyle,
+//                request.getMarkedDiaryContent(),
+//                request.getUserRequest()
+//        );
+//
+//        // AI 서버에 수정 요청
+//        AiDiaryResponseDto aiResponse = aiServerService.requestDiaryModification(aiModifyRequest).block();
+//
+//        if (aiResponse == null || !StringUtils.hasText(aiResponse.getDiary())) {
+//
+//            throw new RuntimeException("AI 서버로부터 일기 수정 내용을 받지 못했습니다. 응답 내용: " + (aiResponse != null ? aiResponse.getDiary() : "null"));
+//        }
+//
+//        // AI 서버로부터 받은 내용으로 일기 업데이트
+//        diary.setContent(aiResponse.getDiary());
+//        if (StringUtils.hasText(aiResponse.getEmoji())) {
+//            diary.setEmotionIcon(aiResponse.getEmoji());
+//        }
+//
+//        return DiaryResponse.from(diaryRepository.save(diary));
+//    }
 
     private void setExplicitRepresentativePhoto(Diary diary, Long representativePhotoId, Long userId, List<Long> currentDiaryPhotoIds) {
         DiaryPhoto repPhoto = photoRepository.findById(representativePhotoId)

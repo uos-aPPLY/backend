@@ -15,6 +15,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -65,15 +66,29 @@ public class DiaryController {
         return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "AI 자동 일기 생성")
+//    @Operation(summary = "AI 자동 일기 생성")
+//    @PostMapping("/auto")
+//    public ResponseEntity<DiaryResponse> createAiDiary(@CurrentUser UserPrincipal userPrincipal,
+//                                                       @Valid @RequestBody AiDiaryCreateRequest aiDiaryCreateRequest) {
+//        DiaryResponse response = diaryService.createDiaryWithAiAssistance(
+//                userPrincipal.getUserId(),
+//                aiDiaryCreateRequest
+//        );
+//        return ResponseEntity.ok(response);
+//    }
+
+    @Operation(summary = "AI 자동 일기 생성 요청 (비동기 처리 시작)")
     @PostMapping("/auto")
-    public ResponseEntity<DiaryResponse> createAiDiary(@CurrentUser UserPrincipal userPrincipal,
-                                                       @Valid @RequestBody AiDiaryCreateRequest aiDiaryCreateRequest) {
-        DiaryResponse response = diaryService.createDiaryWithAiAssistance(
-                userPrincipal.getUserId(),
-                aiDiaryCreateRequest
-        );
-        return ResponseEntity.ok(response);
+    public ResponseEntity<DiaryResponse> requestAiDiaryCreation( // 메소드명 변경 및 반환 타입 유지
+                                                                 @CurrentUser UserPrincipal userPrincipal,
+                                                                 @Valid @RequestBody AiDiaryCreateRequest aiDiaryCreateRequest) {
+        // DiaryService.requestAiDiaryCreation은 이제 "generating" 상태의 DiaryResponse를 빠르게 반환
+        DiaryResponse response = diaryService.requestAiDiaryCreation(userPrincipal.getUserId(), aiDiaryCreateRequest);
+        // 클라이언트는 이 응답의 status가 "generating"임을 확인하고,
+        // getDiaryStatusByDate API를 주기적으로 호출하여 최종 결과를 확인합니다.
+        // 또는, 여기서 HTTP 202 Accepted를 반환하고, 응답 본문에 상태 확인용 ID나 정보를 줄 수도 있습니다.
+        // 여기서는 DiaryResponse를 그대로 반환하는 것으로 유지합니다.
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(response); // 202 Accepted와 함께 생성중인 일기 정보 반환
     }
 
     @Operation(summary = "일기 수동 수정 (내용, 이모티콘)")
@@ -86,13 +101,33 @@ public class DiaryController {
         return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "AI를 이용한 일기 수정")
+//    @Operation(summary = "AI를 이용한 일기 수정")
+//    @PatchMapping("/{diaryId}/ai-modify")
+//    public ResponseEntity<DiaryResponse> updateDiaryWithAi(
+//            @CurrentUser UserPrincipal userPrincipal,
+//            @PathVariable Long diaryId,
+//            @Valid @RequestBody DiaryAiUpdateRequest request) {
+//        DiaryResponse response = diaryService.updateDiaryWithAiAssistance(userPrincipal.getUserId(), diaryId, request);
+//        return ResponseEntity.ok(response);
+//    }
+
+    @Operation(summary = "AI를 이용한 일기 수정 요청 (비동기 처리 시작)")
     @PatchMapping("/{diaryId}/ai-modify")
-    public ResponseEntity<DiaryResponse> updateDiaryWithAi(
+    public ResponseEntity<DiaryResponse> requestAiDiaryModification(
+                                                                     @CurrentUser UserPrincipal userPrincipal,
+                                                                     @PathVariable Long diaryId,
+                                                                     @Valid @RequestBody DiaryAiUpdateRequest request) {
+        DiaryResponse response = diaryService.requestAiDiaryModification(userPrincipal.getUserId(), diaryId, request);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(response); // 202 Accepted
+    }
+
+    @Operation(summary = "특정 날짜의 일기 상태 조회 (캘린더에서 일기 유무 및 생성 중 확인)")
+    @GetMapping("/status")
+    public ResponseEntity<DiaryStatusResponse> getDiaryStatusByDate(
             @CurrentUser UserPrincipal userPrincipal,
-            @PathVariable Long diaryId,
-            @Valid @RequestBody DiaryAiUpdateRequest request) {
-        DiaryResponse response = diaryService.updateDiaryWithAiAssistance(userPrincipal.getUserId(), diaryId, request);
+            @Parameter(description = "조회할 날짜 (YYYY-MM-DD 형식)", required = true, example = "2025-05-24")
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        DiaryStatusResponse response = diaryService.getDiaryStatusByDate(userPrincipal.getUserId(), date);
         return ResponseEntity.ok(response);
     }
 

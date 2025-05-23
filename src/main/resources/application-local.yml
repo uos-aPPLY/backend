@@ -6,4 +6,4 @@ spring:
     url: jdbc:mysql://localhost:3306/diarypic_db?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
 
 ai-server:
-  base-url: http://localhost:8000
+  base-url: http://localhost:8000 #http://54.180.208.73:8000

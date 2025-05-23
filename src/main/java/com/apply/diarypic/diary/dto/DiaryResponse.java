@@ -59,9 +59,8 @@ public class DiaryResponse {
             response.setPhotos(Collections.emptyList());
         }
 
-        // status 필드를 deletedAt 값에 따라 동적으로 설정 (선택적)
         if (diary.getDeletedAt() != null) {
-            response.setStatus("휴지통");
+            response.setStatus("trashed");
         }
         return response;
     }

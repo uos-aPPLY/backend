@@ -131,6 +131,15 @@ public class DiaryController {
         return ResponseEntity.ok(response);
     }
 
+    @Operation(summary = "일기 확인 처리 (unconfirmed -> confirmed 상태로 변경)")
+    @PatchMapping("/{diaryId}/confirm")
+    public ResponseEntity<DiaryResponse> confirmDiary(
+            @CurrentUser UserPrincipal userPrincipal,
+            @PathVariable Long diaryId) {
+        DiaryResponse response = diaryService.confirmDiary(userPrincipal.getUserId(), diaryId);
+        return ResponseEntity.ok(response);
+    }
+
     @Operation(summary = "일기 내 사진 목록 전체 수정 (추가, 삭제, 순서 변경)")
     @PatchMapping("/{diaryId}/photos") // Photo 컬렉션에 대한 변경
     public ResponseEntity<DiaryResponse> updateDiaryPhotos(

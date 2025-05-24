@@ -382,6 +382,24 @@ public class DiaryService {
         return new DiaryStatusResponse(date.toString(), "exists", diary.getId());
     }
 
+    // 일기 "확인" (Confirm) 서비스 메소드
+    @Transactional
+    public DiaryResponse confirmDiary(Long userId, Long diaryId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다. ID: " + userId));
+        Diary diary = diaryRepository.findByIdAndUserAndDeletedAtIsNull(diaryId, user)
+                .orElseThrow(() -> new EntityNotFoundException("확인할 일기를 찾을 수 없습니다. ID: " + diaryId));
+
+        if ("generating".equalsIgnoreCase(diary.getStatus())) {
+            throw new IllegalStateException("아직 생성 중인 일기입니다. 잠시 후 다시 시도해주세요.");
+        }
+
+        diary.setStatus("confirmed");
+        Diary confirmedDiary = diaryRepository.save(diary);
+        log.info("일기 ID {}의 상태가 'confirmed'로 업데이트되었습니다.", diaryId);
+        return DiaryResponse.from(confirmedDiary);
+    }
+
     private Diary createAndSaveDiaryAndAlbums(User user, String content, String emoji, LocalDate diaryDate, List<AiDiaryCreateRequest.FinalizedPhotoPayload> finalizedPhotoPayloads, Long userId, boolean isAiGenerated) {
         Diary diary = Diary.builder()
                 .user(user)

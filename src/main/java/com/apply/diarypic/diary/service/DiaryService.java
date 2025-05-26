@@ -11,6 +11,7 @@ import com.apply.diarypic.album.repository.DiaryAlbumRepository;
 import com.apply.diarypic.album.service.AlbumService;
 import com.apply.diarypic.diary.dto.*;
 import com.apply.diarypic.diary.entity.Diary;
+import com.apply.diarypic.global.geocoding.GeocodingService;
 import com.apply.diarypic.photo.entity.DiaryPhoto;
 import com.apply.diarypic.diary.repository.DiaryRepository;
 import com.apply.diarypic.global.s3.S3Uploader;
@@ -56,6 +57,7 @@ public class DiaryService {
     private final PhotoKeywordRepository photoKeywordRepository;
     private final AlbumService albumService;
     private final DiaryAlbumRepository diaryAlbumRepository;
+    private final GeocodingService geocodingService;
 
     private static final DateTimeFormatter ISO_LOCAL_DATE_TIME_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
@@ -407,7 +409,7 @@ public class DiaryService {
                 .emotionIcon(emoji)
                 .diaryDate(diaryDate)
                 .isFavorited(false)
-                .status(isAiGenerated ? "미확인" : "확인")
+                .status(isAiGenerated ? "unconfirmed" : "confiremd")
                 .diaryPhotos(new ArrayList<>())
                 .build();
         Diary savedDiary = diaryRepository.save(diary);
@@ -417,15 +419,39 @@ public class DiaryService {
             finalizedPhotoPayloads.sort(Comparator.comparingInt(AiDiaryCreateRequest.FinalizedPhotoPayload::getSequence));
             for (AiDiaryCreateRequest.FinalizedPhotoPayload payload : finalizedPhotoPayloads) {
                 DiaryPhoto diaryPhoto = photoRepository.findById(payload.getPhotoId())
-                        .map(dp -> {
-                            if (!dp.getUserId().equals(userId)) {
-                                throw new SecurityException("해당 사진에 대한 접근 권한이 없습니다. Photo ID: " + payload.getPhotoId());
+                        .orElseThrow(() -> new IllegalArgumentException("저장할 사진 정보를 찾을 수 없습니다. ID: " + payload.getPhotoId()));
+
+                if (!diaryPhoto.getUserId().equals(userId)) {
+                    throw new SecurityException("해당 사진에 대한 접근 권한이 없습니다. Photo ID: " + payload.getPhotoId());
+                }
+
+                diaryPhoto.setDiary(savedDiary);
+                diaryPhoto.setSequence(payload.getSequence());
+
+                // --- Geocoding 수행 (아직 정보가 없는 경우에만) ---
+                if (diaryPhoto.getLocation() != null &&
+                        (!StringUtils.hasText(diaryPhoto.getCountryName()) ||
+                                !StringUtils.hasText(diaryPhoto.getAdminAreaLevel1()) ||
+                                !StringUtils.hasText(diaryPhoto.getLocality()))) {
+                    try {
+                        String[] latLng = diaryPhoto.getLocation().split(",");
+                        if (latLng.length == 2) {
+                            double latitude = Double.parseDouble(latLng[0]);
+                            double longitude = Double.parseDouble(latLng[1]);
+                            GeocodingService.ParsedAddress parsedAddress = geocodingService.getParsedAddressFromCoordinates(latitude, longitude);
+                            if (parsedAddress != null) {
+                                diaryPhoto.setCountryName(parsedAddress.getCountryName());
+                                diaryPhoto.setAdminAreaLevel1(parsedAddress.getAdminAreaLevel1());
+                                diaryPhoto.setLocality(parsedAddress.getLocality());
+                                log.info("Diary ID {} - Photo ID {}: 일기 생성 중 Geocoding 완료", savedDiary.getId(), diaryPhoto.getId());
                             }
-                            dp.setDiary(savedDiary);
-                            dp.setSequence(payload.getSequence());
-                            savedDiary.getDiaryPhotos().add(dp);
-                            return dp;
-                        }).orElseThrow(() -> new IllegalArgumentException("저장할 사진 정보를 찾을 수 없습니다. ID: " + payload.getPhotoId()));
+                        }
+                    } catch (NumberFormatException e) {
+                        log.warn("Diary ID {} - Photo ID {}: 잘못된 location 문자열 형식 ('{}'). Geocoding 건너뜁니다.", savedDiary.getId(), diaryPhoto.getId(), diaryPhoto.getLocation());
+                    } catch (Exception e) {
+                        log.warn("Diary ID {} - Photo ID {}: 일기 생성 중 Geocoding 오류: {}", savedDiary.getId(), diaryPhoto.getId(), e.getMessage());
+                    }
+                }
                 diaryPhotosForDiaryEntities.add(diaryPhoto);
 
                 String keywordStringFromFrontend = payload.getKeyword();

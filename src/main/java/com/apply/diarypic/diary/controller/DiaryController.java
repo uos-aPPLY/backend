@@ -8,6 +8,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -20,6 +22,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @Tag(name = "Diary API", description = "일기 관련 API")
 @RestController
@@ -55,6 +58,19 @@ public class DiaryController {
             @PageableDefault(size = 10, sort = "diaryDate", direction = Sort.Direction.DESC)
             @Parameter(hidden = true) Pageable pageable) {
         Page<DiaryResponse> response = diaryService.getDiariesByUser(userPrincipal.getUserId(), pageable);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "캘린더용 월별 일기 간략 정보 목록 조회")
+    @GetMapping("/calendar")
+    public ResponseEntity<List<CalendarDiaryInfoResponse>> getDiariesForCalendar(
+            @CurrentUser UserPrincipal userPrincipal,
+            @Parameter(description = "조회할 연도 (YYYY 형식)", required = true, example = "2025")
+            @RequestParam @Min(1900) @Max(2999) int year,
+            @Parameter(description = "조회할 월 (1-12 사이 숫자)", required = true, example = "5")
+            @RequestParam @Min(1) @Max(12) int month) {
+
+        List<CalendarDiaryInfoResponse> response = diaryService.getDiariesForCalendar(userPrincipal.getUserId(), year, month);
         return ResponseEntity.ok(response);
     }
 

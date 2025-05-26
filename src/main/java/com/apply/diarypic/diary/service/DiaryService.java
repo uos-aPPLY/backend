@@ -79,6 +79,22 @@ public class DiaryService {
     }
 
     @Transactional(readOnly = true)
+    public List<CalendarDiaryInfoResponse> getDiariesForCalendar(Long userId, int year, int month) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다. ID: " + userId));
+
+        if (month < 1 || month > 12) {
+            throw new IllegalArgumentException("월(month)은 1에서 12 사이의 값이어야 합니다.");
+        }
+
+        List<Diary> diaries = diaryRepository.findAllByUserAndYearAndMonthAndDeletedAtIsNullOrderByDiaryDateAsc(user, year, month);
+
+        return diaries.stream()
+                .map(CalendarDiaryInfoResponse::from)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
     public DiaryResponse getDiaryByDate(Long userId, LocalDate diaryDate) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다. ID: " + userId));

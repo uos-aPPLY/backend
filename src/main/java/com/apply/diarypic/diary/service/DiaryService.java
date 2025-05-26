@@ -225,27 +225,27 @@ public class DiaryService {
         return DiaryResponse.from(generatingDiary);
     }
 
-    @Transactional
-    public DiaryResponse requestAiDiaryModification(Long userId, Long diaryId, DiaryAiUpdateRequest request) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다. ID: " + userId));
-        Diary diary = diaryRepository.findByIdAndUserAndDeletedAtIsNull(diaryId, user)
-                .orElseThrow(() -> new EntityNotFoundException("수정할 일기를 찾을 수 없습니다. ID: " + diaryId));
-
-        if ("generating".equalsIgnoreCase(diary.getStatus())) {
-            throw new IllegalStateException("해당 일기는 현재 AI 처리 중입니다. 잠시 후 다시 시도해주세요.");
-        }
-
-        String originalStatus = diary.getStatus();
-        diary.setStatus("generating");
-        Diary generatingDiary = diaryRepository.save(diary);
-        log.info("일기 ID {} 'generating' (for modification) 상태로 업데이트됨.", diaryId);
-
-        processAiDiaryModification(user, generatingDiary.getId(), request, originalStatus);
-
-        // Presigned URL을 사용하지 않으므로 S3Uploader와 만료시간 전달 불필요
-        return DiaryResponse.from(generatingDiary);
-    }
+//    @Transactional
+//    public DiaryResponse requestAiDiaryModification(Long userId, Long diaryId, DiaryAiUpdateRequest request) {
+//        User user = userRepository.findById(userId)
+//                .orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다. ID: " + userId));
+//        Diary diary = diaryRepository.findByIdAndUserAndDeletedAtIsNull(diaryId, user)
+//                .orElseThrow(() -> new EntityNotFoundException("수정할 일기를 찾을 수 없습니다. ID: " + diaryId));
+//
+//        if ("generating".equalsIgnoreCase(diary.getStatus())) {
+//            throw new IllegalStateException("해당 일기는 현재 AI 처리 중입니다. 잠시 후 다시 시도해주세요.");
+//        }
+//
+//        String originalStatus = diary.getStatus();
+//        diary.setStatus("generating");
+//        Diary generatingDiary = diaryRepository.save(diary);
+//        log.info("일기 ID {} 'generating' (for modification) 상태로 업데이트됨.", diaryId);
+//
+//        processAiDiaryModification(user, generatingDiary.getId(), request, originalStatus);
+//
+//        // Presigned URL을 사용하지 않으므로 S3Uploader와 만료시간 전달 불필요
+//        return DiaryResponse.from(generatingDiary);
+//    }
 
 
     @Async
@@ -322,64 +322,93 @@ public class DiaryService {
     }
 
 
-    @Async
-    @Transactional
-    public void processAiDiaryModification(User user, Long diaryId, DiaryAiUpdateRequest request, String originalStatus) {
-        log.info("비동기 AI 일기 수정 시작: Diary ID {}", diaryId);
-        Diary diaryToUpdate = diaryRepository.findById(diaryId).orElse(null);
+//    @Async
+//    @Transactional
+//    public void processAiDiaryModification(User user, Long diaryId, DiaryAiUpdateRequest request, String originalStatus) {
+//        log.info("비동기 AI 일기 수정 시작: Diary ID {}", diaryId);
+//        Diary diaryToUpdate = diaryRepository.findById(diaryId).orElse(null);
+//
+//        if (diaryToUpdate == null || !"generating".equalsIgnoreCase(diaryToUpdate.getStatus())) {
+//            log.warn("비동기 AI 일기 수정 중단: Diary ID {}를 찾을 수 없거나 상태가 'generating'이 아님 (현재 상태: {}).", diaryId, diaryToUpdate != null ? diaryToUpdate.getStatus() : "null");
+//            // 원래 상태로 복구 시도 (선택적)
+//            if (diaryToUpdate != null && StringUtils.hasText(originalStatus)) {
+//                diaryToUpdate.setStatus(originalStatus);
+//                diaryRepository.save(diaryToUpdate);
+//            }
+//            return;
+//        }
+//
+//        try {
+//            String userWritingStyle = user.getWritingStylePrompt();
+//            if (!StringUtils.hasText(userWritingStyle)) {
+//                userWritingStyle = "오늘 있었던 일을 바탕으로 일기를 작성해줘.";
+//            }
+//
+//            AiDiaryModifyRequestDto aiModifyRequest = new AiDiaryModifyRequestDto(
+//                    userWritingStyle,
+//                    request.getMarkedDiaryContent(),
+//                    request.getUserRequest()
+//            );
+//
+//            aiServerService.requestDiaryModification(aiModifyRequest)
+//                    .subscribe(aiResponse -> {
+//                        if (aiResponse != null && StringUtils.hasText(aiResponse.getDiary())) {
+//                            diaryToUpdate.setContent(aiResponse.getDiary());
+//                            if (StringUtils.hasText(aiResponse.getEmoji())) {
+//                                diaryToUpdate.setEmotionIcon(aiResponse.getEmoji());
+//                            }
+//                            diaryToUpdate.setStatus("unconfirmed"); // 또는 originalStatus (사용자가 확인했었다면)
+//                            diaryRepository.save(diaryToUpdate);
+//                            log.info("비동기 AI 일기 수정 완료: Diary ID {}", diaryId);
+//                        } else {
+//                            log.error("비동기 AI 일기 수정 실패: AI 서버로부터 유효한 응답을 받지 못함. Diary ID {}", diaryId);
+//                            diaryToUpdate.setStatus(originalStatus); // 실패 시 원래 상태로 롤백
+//                            diaryRepository.save(diaryToUpdate);
+//                        }
+//                    }, error -> {
+//                        log.error("비동기 AI 일기 수정 중 오류 발생: Diary ID {}. Error: {}", diaryId, error.getMessage());
+//                        Diary diaryOnError = diaryRepository.findById(diaryId).orElse(null);
+//                        if (diaryOnError != null) {
+//                            diaryOnError.setStatus(originalStatus); // 실패 시 원래 상태로 롤백
+//                            // diaryOnError.setContent(diaryOnError.getContent() + "\n\n[AI 수정 실패: " + error.getMessage() + "]");
+//                            diaryRepository.save(diaryOnError);
+//                        }
+//                    });
+//        } catch (Exception e) {
+//            log.error("비동기 AI 일기 수정 로직 실행 중 예외 발생: Diary ID {}. Error: {}", diaryId, e.getMessage(), e);
+//            diaryToUpdate.setStatus(originalStatus);
+//            // diaryToUpdate.setContent(diaryToUpdate.getContent() + "\n\n[AI 수정 준비 중 오류: " + e.getMessage() + "]");
+//            diaryRepository.save(diaryToUpdate);
+//        }
+//    }
 
-        if (diaryToUpdate == null || !"generating".equalsIgnoreCase(diaryToUpdate.getStatus())) {
-            log.warn("비동기 AI 일기 수정 중단: Diary ID {}를 찾을 수 없거나 상태가 'generating'이 아님 (현재 상태: {}).", diaryId, diaryToUpdate != null ? diaryToUpdate.getStatus() : "null");
-            // 원래 상태로 복구 시도 (선택적)
-            if (diaryToUpdate != null && StringUtils.hasText(originalStatus)) {
-                diaryToUpdate.setStatus(originalStatus);
-                diaryRepository.save(diaryToUpdate);
-            }
-            return;
+    @Transactional(readOnly = true)
+    public AiDiaryResponseDto suggestAiModification(Long userId, Long diaryId, DiaryAiUpdateRequest clientRequest) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다. ID: " + userId));
+        Diary diary = diaryRepository.findByIdAndUserAndDeletedAtIsNull(diaryId, user)
+                .orElseThrow(() -> new EntityNotFoundException("수정 제안을 요청할 일기를 찾을 수 없습니다. ID: " + diaryId));
+
+        // 사용자의 글쓰기 스타일 가져오기
+        String userWritingStyle = user.getWritingStylePrompt();
+
+        AiDiaryModifyRequestDto aiModifyRequest = new AiDiaryModifyRequestDto(
+                userWritingStyle,
+                clientRequest.getMarkedDiaryContent(),
+                clientRequest.getUserRequest()
+        );
+
+        log.info("AI 서버에 일기 수정 제안 요청: Diary ID {}", diaryId);
+        // AI 서버에 수정 요청 (동기적으로 결과 대기)
+        AiDiaryResponseDto aiSuggestion = aiServerService.requestDiaryModification(aiModifyRequest).block();
+
+        if (aiSuggestion == null || !StringUtils.hasText(aiSuggestion.getDiary())) {
+            log.error("AI 서버로부터 일기 수정 제안을 받지 못했습니다. Diary ID: {}", diaryId);
+            return new AiDiaryResponseDto("AI 수정 제안을 생성하는 데 실패했습니다. 원본 내용을 확인해주세요.", diary.getEmotionIcon());
         }
 
-        try {
-            String userWritingStyle = user.getWritingStylePrompt();
-            if (!StringUtils.hasText(userWritingStyle)) {
-                userWritingStyle = "오늘 있었던 일을 바탕으로 일기를 작성해줘.";
-            }
-
-            AiDiaryModifyRequestDto aiModifyRequest = new AiDiaryModifyRequestDto(
-                    userWritingStyle,
-                    request.getMarkedDiaryContent(),
-                    request.getUserRequest()
-            );
-
-            aiServerService.requestDiaryModification(aiModifyRequest)
-                    .subscribe(aiResponse -> {
-                        if (aiResponse != null && StringUtils.hasText(aiResponse.getDiary())) {
-                            diaryToUpdate.setContent(aiResponse.getDiary());
-                            if (StringUtils.hasText(aiResponse.getEmoji())) {
-                                diaryToUpdate.setEmotionIcon(aiResponse.getEmoji());
-                            }
-                            diaryToUpdate.setStatus("unconfirmed"); // 또는 originalStatus (사용자가 확인했었다면)
-                            diaryRepository.save(diaryToUpdate);
-                            log.info("비동기 AI 일기 수정 완료: Diary ID {}", diaryId);
-                        } else {
-                            log.error("비동기 AI 일기 수정 실패: AI 서버로부터 유효한 응답을 받지 못함. Diary ID {}", diaryId);
-                            diaryToUpdate.setStatus(originalStatus); // 실패 시 원래 상태로 롤백
-                            diaryRepository.save(diaryToUpdate);
-                        }
-                    }, error -> {
-                        log.error("비동기 AI 일기 수정 중 오류 발생: Diary ID {}. Error: {}", diaryId, error.getMessage());
-                        Diary diaryOnError = diaryRepository.findById(diaryId).orElse(null);
-                        if (diaryOnError != null) {
-                            diaryOnError.setStatus(originalStatus); // 실패 시 원래 상태로 롤백
-                            // diaryOnError.setContent(diaryOnError.getContent() + "\n\n[AI 수정 실패: " + error.getMessage() + "]");
-                            diaryRepository.save(diaryOnError);
-                        }
-                    });
-        } catch (Exception e) {
-            log.error("비동기 AI 일기 수정 로직 실행 중 예외 발생: Diary ID {}. Error: {}", diaryId, e.getMessage(), e);
-            diaryToUpdate.setStatus(originalStatus);
-            // diaryToUpdate.setContent(diaryToUpdate.getContent() + "\n\n[AI 수정 준비 중 오류: " + e.getMessage() + "]");
-            diaryRepository.save(diaryToUpdate);
-        }
+        log.info("AI 서버로부터 일기 수정 제안 수신 완료: Diary ID {}", diaryId);
+        return aiSuggestion; // AI가 제안한 내용과 이모티콘을 그대로 반환
     }
 
     // --- 일기 상태 확인용 서비스 메소드 ---
@@ -475,6 +504,97 @@ public class DiaryService {
         }
 
         return savedDiary;
+    }
+
+    @Transactional
+    public DiaryResponse updateWholeDiary(Long userId, Long diaryId, DiaryRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다. ID: " + userId));
+        Diary diary = diaryRepository.findByIdAndUserAndDeletedAtIsNull(diaryId, user)
+                .orElseThrow(() -> new EntityNotFoundException("수정할 일기를 찾을 수 없습니다. ID: " + diaryId));
+
+        // 0. 수정 전, 현재 일기가 연결된 앨범들 추적
+        Set<Album> previouslyAffectedAlbums = diaryAlbumRepository.findByDiary(diary).stream()
+                .map(DiaryAlbum::getAlbum)
+                .collect(Collectors.toSet());
+
+        // 1. 기본 정보 업데이트
+        if (request.getDiaryDate() != null) {
+            diary.setDiaryDate(request.getDiaryDate());
+        }
+        diary.setContent(request.getContent());
+        diary.setEmotionIcon(request.getEmotionIcon());
+
+        List<Long> requestedPhotoIds = request.getPhotoIds() == null ? new ArrayList<>() : request.getPhotoIds();
+        Set<Long> requestedPhotoIdsSet = new HashSet<>(requestedPhotoIds);
+
+        List<DiaryPhoto> photosToDelete = new ArrayList<>();
+        List<DiaryPhoto> currentDiaryPhotosCopy = new ArrayList<>(diary.getDiaryPhotos());
+
+        String currentRepresentativePhotoS3Key = diary.getRepresentativePhotoUrl();
+
+        for (DiaryPhoto existingPhoto : currentDiaryPhotosCopy) {
+            if (!requestedPhotoIdsSet.contains(existingPhoto.getId())) {
+                photosToDelete.add(existingPhoto);
+                if (existingPhoto.getPhotoUrl() != null && existingPhoto.getPhotoUrl().equals(currentRepresentativePhotoS3Key)) {
+                    diary.setRepresentativePhotoUrl(null);
+                }
+            }
+        }
+
+        if (!photosToDelete.isEmpty()) {
+            for (DiaryPhoto photo : photosToDelete) {
+                if (StringUtils.hasText(photo.getPhotoUrl())) {
+                    s3Uploader.deleteFileByUrl(photo.getPhotoUrl());
+                }
+            }
+            diary.getDiaryPhotos().removeAll(photosToDelete);
+            log.info("일기 ID {} 업데이트 중 {}개의 사진 삭제 완료.", diaryId, photosToDelete.size());
+        }
+
+        List<DiaryPhoto> newFinalDiaryPhotos = new ArrayList<>();
+        Map<Long, DiaryPhoto> finalPhotoMap = new HashMap<>();
+
+        for (int i = 0; i < requestedPhotoIds.size(); i++) {
+            Long photoIdToAssign = requestedPhotoIds.get(i);
+            DiaryPhoto photo = photoRepository.findById(photoIdToAssign)
+                    .orElseThrow(() -> new EntityNotFoundException("일기에 추가하려는 사진을 찾을 수 없습니다. ID: " + photoIdToAssign));
+
+            if (!photo.getUserId().equals(userId)) {
+                throw new SecurityException("다른 사용자의 사진(ID: " + photo.getId() + ")을 일기에 추가할 수 없습니다.");
+            }
+
+            photo.setDiary(diary);
+            photo.setSequence(i);
+            newFinalDiaryPhotos.add(photo);
+        }
+
+        diary.getDiaryPhotos().clear();
+        diary.getDiaryPhotos().addAll(newFinalDiaryPhotos);
+
+        if (request.getRepresentativePhotoId() != null) {
+            setExplicitRepresentativePhoto(diary, request.getRepresentativePhotoId(), userId, requestedPhotoIds);
+        } else if (!newFinalDiaryPhotos.isEmpty()) {
+            setInitialRepresentativePhoto(diary);
+        } else {
+            diary.setRepresentativePhotoUrl(null);
+        }
+
+        Diary savedDiary = diaryRepository.save(diary);
+        log.info("일기 ID {} 전체 업데이트 완료.", diaryId);
+
+        // 5. 앨범 정보 업데이트 및 빈 앨범 정리
+        Set<Album> albumsToCheck = new HashSet<>(previouslyAffectedAlbums);
+        if (albumService != null) {
+            albumService.processDiaryAlbums(savedDiary, new ArrayList<>(savedDiary.getDiaryPhotos()));
+            diaryAlbumRepository.findByDiary(savedDiary).forEach(da -> albumsToCheck.add(da.getAlbum()));
+        }
+        if (!albumsToCheck.isEmpty()) {
+            log.info("일기 ID {} 수정 후 다음 앨범들의 상태를 확인합니다: {}", diaryId, albumsToCheck.stream().map(Album::getName).collect(Collectors.toList()));
+            albumsToCheck.forEach(albumService::checkAndRemoveAlbumIfEmpty);
+        }
+
+        return DiaryResponse.from(savedDiary);
     }
 
     @Transactional

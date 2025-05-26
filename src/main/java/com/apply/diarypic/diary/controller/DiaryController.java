@@ -1,5 +1,6 @@
 package com.apply.diarypic.diary.controller;
 
+import com.apply.diarypic.ai.dto.AiDiaryResponseDto;
 import com.apply.diarypic.diary.dto.*;
 import com.apply.diarypic.diary.service.DiaryService;
 import com.apply.diarypic.global.security.CurrentUser;
@@ -107,15 +108,15 @@ public class DiaryController {
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(response); // 202 Accepted와 함께 생성중인 일기 정보 반환
     }
 
-    @Operation(summary = "일기 수동 수정 (내용, 이모티콘)")
-    @PatchMapping("/{diaryId}") // 대표사진 변경과 구분하기 위해 HTTP Method는 동일하게, 경로는 기본으로 사용
-    public ResponseEntity<DiaryResponse> updateDiaryManual(
-            @CurrentUser UserPrincipal userPrincipal,
-            @PathVariable Long diaryId,
-            @Valid @RequestBody DiaryManualUpdateRequest request) {
-        DiaryResponse response = diaryService.updateDiaryManual(userPrincipal.getUserId(), diaryId, request);
-        return ResponseEntity.ok(response);
-    }
+//    @Operation(summary = "일기 수동 수정 (내용, 이모티콘)")
+//    @PatchMapping("/{diaryId}") // 대표사진 변경과 구분하기 위해 HTTP Method는 동일하게, 경로는 기본으로 사용
+//    public ResponseEntity<DiaryResponse> updateDiaryManual(
+//            @CurrentUser UserPrincipal userPrincipal,
+//            @PathVariable Long diaryId,
+//            @Valid @RequestBody DiaryManualUpdateRequest request) {
+//        DiaryResponse response = diaryService.updateDiaryManual(userPrincipal.getUserId(), diaryId, request);
+//        return ResponseEntity.ok(response);
+//    }
 
 //    @Operation(summary = "AI를 이용한 일기 수정")
 //    @PatchMapping("/{diaryId}/ai-modify")
@@ -127,14 +128,35 @@ public class DiaryController {
 //        return ResponseEntity.ok(response);
 //    }
 
-    @Operation(summary = "AI를 이용한 일기 수정 요청 (비동기 처리 시작)")
-    @PatchMapping("/{diaryId}/ai-modify")
-    public ResponseEntity<DiaryResponse> requestAiDiaryModification(
-                                                                     @CurrentUser UserPrincipal userPrincipal,
-                                                                     @PathVariable Long diaryId,
-                                                                     @Valid @RequestBody DiaryAiUpdateRequest request) {
-        DiaryResponse response = diaryService.requestAiDiaryModification(userPrincipal.getUserId(), diaryId, request);
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(response); // 202 Accepted
+    @Operation(summary = "일기 전체 수정 (생성 API와 유사한 요청 사용)")
+    @PatchMapping("/{diaryId}")
+    public ResponseEntity<DiaryResponse> updateWholeDiary(
+            @CurrentUser UserPrincipal userPrincipal,
+            @PathVariable Long diaryId,
+            @Valid @RequestBody DiaryRequest diaryRequest) {
+        DiaryResponse response = diaryService.updateWholeDiary(userPrincipal.getUserId(), diaryId, diaryRequest);
+        return ResponseEntity.ok(response);
+    }
+
+//    @Operation(summary = "AI를 이용한 일기 수정 요청 (비동기 처리 시작)")
+//    @PatchMapping("/{diaryId}/ai-modify")
+//    public ResponseEntity<DiaryResponse> requestAiDiaryModification(
+//                                                                     @CurrentUser UserPrincipal userPrincipal,
+//                                                                     @PathVariable Long diaryId,
+//                                                                     @Valid @RequestBody DiaryAiUpdateRequest request) {
+//        DiaryResponse response = diaryService.requestAiDiaryModification(userPrincipal.getUserId(), diaryId, request);
+//        return ResponseEntity.status(HttpStatus.ACCEPTED).body(response); // 202 Accepted
+//    }
+
+    @Operation(summary = "AI를 이용한 일기 수정 제안 받기 (DB 저장 안 함)")
+    @PatchMapping("/{diaryId}/ai-suggest-modification") // 또는 기존 /ai-modify 경로 사용
+    public ResponseEntity<AiDiaryResponseDto> suggestAiModification(
+            @CurrentUser UserPrincipal userPrincipal,
+            @PathVariable Long diaryId,
+            @Valid @RequestBody DiaryAiUpdateRequest request) {
+        // DiaryService.suggestAiModification은 이제 AiDiaryResponseDto를 직접 반환
+        AiDiaryResponseDto aiSuggestion = diaryService.suggestAiModification(userPrincipal.getUserId(), diaryId, request);
+        return ResponseEntity.ok(aiSuggestion);
     }
 
     @Operation(summary = "특정 날짜의 일기 상태 조회 (캘린더에서 일기 유무 및 생성 중 확인)")

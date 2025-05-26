@@ -83,6 +83,7 @@ public class AuthService {
                             .snsUserId(finalSnsUserId)
                             .nickname(finalSocialNicknameForNewUser)
                             .writingStylePrompt("기본 말투입니다.")
+                            .writingStyleNumber(1)
                             .alarmEnabled(false)
                             .build();
                     User savedNewUser = userRepository.save(newUser);

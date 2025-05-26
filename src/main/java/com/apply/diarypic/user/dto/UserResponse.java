@@ -15,6 +15,7 @@ public class UserResponse {
     private String snsUserId;
     private String nickname;
     private String writingStylePrompt;
+    private Integer writingStyleNumber;
     private Boolean alarmEnabled;
 
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm")
@@ -31,6 +32,7 @@ public class UserResponse {
                 .snsUserId(user.getSnsUserId())
                 .nickname(user.getNickname())
                 .writingStylePrompt(user.getWritingStylePrompt())
+                .writingStyleNumber(user.getWritingStyleNumber())
                 .alarmEnabled(user.getAlarmEnabled())
                 .alarmTime(user.getAlarmTime())
                 .totalDiariesCount(totalDiariesCount)
@@ -46,6 +48,7 @@ public class UserResponse {
                 .snsUserId(user.getSnsUserId())
                 .nickname(user.getNickname())
                 .writingStylePrompt(user.getWritingStylePrompt())
+                .writingStyleNumber(user.getWritingStyleNumber())
                 .alarmEnabled(user.getAlarmEnabled())
                 .alarmTime(user.getAlarmTime())
                 .totalDiariesCount(null)

@@ -7,6 +7,7 @@ import com.apply.diarypic.global.s3.S3Uploader;
 import com.apply.diarypic.keyword.repository.KeywordRepository;
 import com.apply.diarypic.photo.entity.DiaryPhoto;
 import com.apply.diarypic.terms.repository.UserTermsAgreementRepository;
+import com.apply.diarypic.user.dto.UpdateWritingStyleRequest;
 import com.apply.diarypic.user.dto.UserResponse;
 import com.apply.diarypic.user.entity.User;
 import com.apply.diarypic.user.repository.UserRepository;
@@ -58,9 +59,10 @@ public class UserService {
     }
 
     @Transactional
-    public User updateWritingStyle(Long userId, String prompt) {
+    public User updateWritingStyle(Long userId, UpdateWritingStyleRequest request) {
         User user = getUserById(userId);
-        user.setWritingStylePrompt(prompt);
+        user.setWritingStylePrompt(request.getPrompt());
+        user.setWritingStyleNumber(request.getWritingStyleNumber());
         return user;
     }
 

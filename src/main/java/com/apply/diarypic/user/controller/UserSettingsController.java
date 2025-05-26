@@ -3,6 +3,7 @@ package com.apply.diarypic.user.controller;
 import com.apply.diarypic.global.security.UserPrincipal;
 import com.apply.diarypic.user.dto.*;
 // import com.apply.diarypic.user.entity.User; // User 반환 안 할 경우 필요 없을 수 있음
+import com.apply.diarypic.user.entity.User;
 import com.apply.diarypic.user.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -33,10 +34,10 @@ public class UserSettingsController {
     }
 
     @PatchMapping("/writing-style")
-    public ResponseEntity<Void> updateWritingStyle(@AuthenticationPrincipal UserPrincipal userPrincipal,
-                                                   @RequestBody @Valid UpdateWritingStyleRequest request) {
-        userService.updateWritingStyle(userPrincipal.getUserId(), request.getPrompt());
-        return ResponseEntity.noContent().build();
+    public ResponseEntity<UserResponse> updateWritingStyle(@AuthenticationPrincipal UserPrincipal userPrincipal,
+                                                           @RequestBody @Valid UpdateWritingStyleRequest request) {
+        User updatedUser = userService.updateWritingStyle(userPrincipal.getUserId(), request);
+        return ResponseEntity.ok(UserResponse.from(updatedUser));
     }
 
     @PatchMapping("/alarm")

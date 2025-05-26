@@ -30,6 +30,9 @@ public class User {
     private String writingStylePrompt;
 
     @Setter
+    private Integer writingStyleNumber;
+
+    @Setter
     private Boolean alarmEnabled;
 
     @Setter

@@ -9,4 +9,6 @@ import lombok.Setter;
 public class UpdateWritingStyleRequest {
     @NotBlank
     private String prompt;
+
+    private Integer writingStyleNumber;
 }

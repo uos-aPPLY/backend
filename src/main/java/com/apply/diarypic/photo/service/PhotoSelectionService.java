@@ -4,16 +4,16 @@ import com.apply.diarypic.photo.entity.DiaryPhoto;
 import com.apply.diarypic.global.s3.S3Uploader;
 import com.apply.diarypic.photo.dto.PhotoResponse;
 import com.apply.diarypic.photo.repository.PhotoRepository;
-import com.apply.diarypic.global.geocoding.GeocodingService; // GeocodingService 임포트
+// import com.apply.diarypic.global.geocoding.GeocodingService; // GeocodingService 의존성 제거
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils; // StringUtils 임포트
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.Collections; // Collections 임포트 (만약 uploadPhotosWithMetadata에서 사용한다면)
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -24,13 +24,15 @@ public class PhotoSelectionService {
 
     private final PhotoRepository photoRepository;
     private final S3Uploader s3Uploader;
-    private final GeocodingService geocodingService;
+    // private final GeocodingService geocodingService; // 주석 처리 또는 삭제
+
+    // Presigned URL 관련 만료 시간 필드 제거
 
     @Transactional(readOnly = true)
     public List<PhotoResponse> getTemporaryPhotos(Long userId) {
         List<DiaryPhoto> tempPhotos = photoRepository.findByDiaryIsNullAndUserId(userId);
         return tempPhotos.stream()
-                .map(PhotoResponse::from)
+                .map(PhotoResponse::from) // Public URL을 사용하는 from 메소드 호출
                 .collect(Collectors.toList());
     }
 
@@ -44,13 +46,9 @@ public class PhotoSelectionService {
         }
 
         List<DiaryPhoto> userTempPhotos = photoRepository.findByDiaryIsNullAndUserId(userId);
-        if (userTempPhotos.isEmpty()) {
-            // finalPhotoIds가 비어있지 않은데 userTempPhotos가 비어있다면 오류
-            if (!finalPhotoIds.isEmpty()) {
-                log.error("사용자 ID {}: 임시 사진이 없는데 최종 선택 요청이 들어왔습니다. finalPhotoIds: {}", userId, finalPhotoIds);
-                throw new EntityNotFoundException("최종 확정할 임시 사진을 찾을 수 없습니다. 서버 상태를 확인해주세요.");
-            }
-            return Collections.emptyList(); // 선택할 임시 사진이 원래 없었고, 요청도 비었다면 빈 리스트 반환
+        if (userTempPhotos.isEmpty() && !finalPhotoIds.isEmpty()) {
+            log.error("사용자 ID {}: 임시 사진이 없는데 최종 선택 요청이 들어왔습니다. finalPhotoIds: {}", userId, finalPhotoIds);
+            throw new EntityNotFoundException("최종 확정할 임시 사진을 찾을 수 없습니다. 서버 상태를 확인해주세요.");
         }
 
         List<DiaryPhoto> finalPhotos = new ArrayList<>();
@@ -75,44 +73,20 @@ public class PhotoSelectionService {
             Long photoId = finalPhotoIds.get(i);
             for (DiaryPhoto photo : finalPhotos) {
                 if (photo.getId().equals(photoId)) {
-                    photo.setSequence(i + 1); // 시퀀스 설정
-
-                    // --- Geocoding 수행 (최종 선택된 사진에 대해서만) ---
-                    if (photo.getLocation() != null &&
-                            (!StringUtils.hasText(photo.getCountryName()) ||
-                                    !StringUtils.hasText(photo.getAdminAreaLevel1()) ||
-                                    !StringUtils.hasText(photo.getLocality()))) {
-                        try {
-                            String[] latLng = photo.getLocation().split(",");
-                            if (latLng.length == 2) {
-                                double latitude = Double.parseDouble(latLng[0]);
-                                double longitude = Double.parseDouble(latLng[1]);
-                                GeocodingService.ParsedAddress parsedAddress = geocodingService.getParsedAddressFromCoordinates(latitude, longitude);
-                                if (parsedAddress != null) {
-                                    photo.setCountryName(parsedAddress.getCountryName());
-                                    photo.setAdminAreaLevel1(parsedAddress.getAdminAreaLevel1());
-                                    photo.setLocality(parsedAddress.getLocality());
-                                    log.info("Photo ID {}: 최종 선택 후 Geocoding 완료 - Country: {}, AdminArea: {}, Locality: {}", photo.getId(), parsedAddress.getCountryName(), parsedAddress.getAdminAreaLevel1(), parsedAddress.getLocality());
-                                }
-                            }
-                        } catch (NumberFormatException e) {
-                            log.warn("Photo ID {}: 잘못된 location 문자열 형식 ('{}'). Geocoding 건너뜁니다.", photo.getId(), photo.getLocation());
-                        } catch (Exception e) {
-                            log.warn("Photo ID {}: 최종 선택 후 Geocoding 중 오류 발생: {}", photo.getId(), e.getMessage());
-                        }
-                    }
-                    // --- Geocoding 종료 ---
+                    photo.setSequence(i + 1);
+                    // --- Geocoding 로직 제거 ---
+                    // 이 단계에서는 DiaryPhoto에 이미 주소 정보가 있다고 가정
                     break;
                 }
             }
         }
 
-        photoRepository.saveAll(finalPhotos);
+        photoRepository.saveAll(finalPhotos); // sequence 변경 사항 저장
 
         for (DiaryPhoto photoToDelete : photosToDelete) {
             try {
                 if (StringUtils.hasText(photoToDelete.getPhotoUrl())) {
-                    s3Uploader.deleteFileByUrl(photoToDelete.getPhotoUrl());
+                    s3Uploader.deleteFileByUrl(photoToDelete.getPhotoUrl()); // Public URL 기반 삭제
                     log.info("S3에서 사진 삭제 성공 (URL: {})", photoToDelete.getPhotoUrl());
                 }
                 photoRepository.delete(photoToDelete);
@@ -121,7 +95,6 @@ public class PhotoSelectionService {
                 log.error("임시 사진 삭제 중 오류 발생 (Photo ID: {}): {}", photoToDelete.getId(), e.getMessage(), e);
             }
         }
-
         return finalPhotos;
     }
 
@@ -139,7 +112,7 @@ public class PhotoSelectionService {
 
         try {
             if (StringUtils.hasText(photo.getPhotoUrl())) {
-                s3Uploader.deleteFileByUrl(photo.getPhotoUrl());
+                s3Uploader.deleteFileByUrl(photo.getPhotoUrl()); // Public URL 기반 삭제
                 log.info("S3에서 사진 삭제 성공 (URL: {})", photo.getPhotoUrl());
             }
         } catch (Exception e) {

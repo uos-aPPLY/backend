@@ -3,11 +3,12 @@ package com.apply.diarypic.photo.service;
 import com.apply.diarypic.photo.dto.PhotoResponse;
 import com.apply.diarypic.photo.dto.PhotoUploadItemDto;
 import com.apply.diarypic.photo.entity.DiaryPhoto;
+import com.apply.diarypic.global.geocoding.GeocodingService; // GeocodingService 임포트
 import com.apply.diarypic.global.s3.S3Uploader;
 import com.apply.diarypic.photo.repository.PhotoRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Async; // @Async 임포트
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -26,6 +27,7 @@ public class PhotoService {
 
     private final S3Uploader s3Uploader;
     private final PhotoRepository photoRepository;
+    private final GeocodingService geocodingService; // GeocodingService 주입
 
     @Transactional
     public List<PhotoResponse> uploadPhotosWithMetadata(List<MultipartFile> files,
@@ -67,41 +69,60 @@ public class PhotoService {
         return responses;
     }
 
-    @Async("photoUploadTaskExecutor")
+    @Async("photoUploadTaskExecutor") // 커스텀 스레드 풀 사용
     @Transactional
     public CompletableFuture<PhotoResponse> processAndSavePhotoAsync(MultipartFile file,
                                                                      PhotoUploadItemDto metadataItem,
                                                                      Long userId) {
-
         String s3Url = null;
-        String originalFilename = file.getOriginalFilename(); // 로그용
+        String originalFilename = file.getOriginalFilename();
         try {
-            s3Url = s3Uploader.upload(file, "photos/" + userId);
+            s3Url = s3Uploader.upload(file, "photos/" + userId); // Public URL 반환
 
             LocalDateTime shootingDateTime = metadataItem.getShootingDateTime();
             String locationString = null;
-            String countryName = metadataItem.getCountryName();
-            String adminAreaLevel1 = metadataItem.getAdminAreaLevel1();
-            String locality = metadataItem.getLocality();
+            String countryName = null; // Geocoding으로 채울 변수
+            String adminAreaLevel1 = null; // Geocoding으로 채울 변수
+            String locality = null; // Geocoding으로 채울 변수
 
             PhotoUploadItemDto.LocationDto locationDto = metadataItem.getLocation();
             if (locationDto != null && locationDto.getLatitude() != null && locationDto.getLongitude() != null) {
-                locationString = locationDto.getLatitude() + "," + locationDto.getLongitude();
-                if (countryName == null && adminAreaLevel1 == null && locality == null) {
-                    log.warn("userId: {}, 파일: {}, locationDto는 있으나 파싱된 주소 정보가 DTO에 없습니다.", userId, originalFilename);
+                double latitude = locationDto.getLatitude();
+                double longitude = locationDto.getLongitude();
+                locationString = latitude + "," + longitude;
+
+                // --- Geocoding 수행 ---
+                try {
+                    GeocodingService.ParsedAddress parsedAddress = geocodingService.getParsedAddressFromCoordinates(latitude, longitude);
+                    if (parsedAddress != null) {
+                        countryName = parsedAddress.getCountryName();
+                        adminAreaLevel1 = parsedAddress.getAdminAreaLevel1();
+                        locality = parsedAddress.getLocality();
+                        log.info("Photo (file: {}): Geocoding 완료 - {}, {}, {}", originalFilename, countryName, adminAreaLevel1, locality);
+                    } else {
+                        log.warn("Photo (file: {}): Geocoding 결과가 null입니다. 위경도: {},{}", originalFilename, latitude, longitude);
+                    }
+                } catch (Exception e) {
+                    log.warn("Photo (file: {}): Geocoding 중 오류 발생: {}. 위경도: {},{}", originalFilename, e.getMessage(), latitude, longitude);
+                    // Geocoding 실패 시에도 나머지 정보는 저장될 수 있도록 예외를 다시 던지지 않음 (정책에 따라 변경 가능)
                 }
+                // --- Geocoding 종료 ---
+
             } else if (metadataItem.getLocation() != null) {
                 log.warn("userId: {}, 파일: {}, location 객체는 있으나 위도 또는 경도 값이 null입니다.", userId, originalFilename);
+            } else {
+                log.info("userId: {}, 파일: {}, 위치 정보(위경도)가 없습니다. Geocoding을 수행하지 않습니다.", userId, originalFilename);
             }
+
 
             DiaryPhoto diaryPhoto = DiaryPhoto.builder()
                     .photoUrl(s3Url)
                     .userId(userId)
                     .shootingDateTime(shootingDateTime)
                     .location(locationString)
-                    .countryName(countryName)
-                    .adminAreaLevel1(adminAreaLevel1)
-                    .locality(locality)
+                    .countryName(countryName) // Geocoding 결과 반영
+                    .adminAreaLevel1(adminAreaLevel1) // Geocoding 결과 반영
+                    .locality(locality) // Geocoding 결과 반영
                     .build();
 
             DiaryPhoto savedDiaryPhoto = photoRepository.save(diaryPhoto);
@@ -111,10 +132,10 @@ public class PhotoService {
 
         } catch (IOException e) {
             log.error("비동기 처리 (IO 오류): userId: {}, 파일: {}. 오류: {}", userId, originalFilename, e.getMessage(), e);
-            return CompletableFuture.completedFuture(null); // 실패 시 null 반환
+            return CompletableFuture.completedFuture(null);
         } catch (Exception e) {
             log.error("비동기 처리 (일반 오류): userId: {}, 파일: {}. 오류: {}", userId, originalFilename, e.getMessage(), e);
-            return CompletableFuture.completedFuture(null); // 실패 시 null 반환
+            return CompletableFuture.completedFuture(null);
         }
     }
 }

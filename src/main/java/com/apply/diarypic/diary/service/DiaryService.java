@@ -428,30 +428,6 @@ public class DiaryService {
                 diaryPhoto.setDiary(savedDiary);
                 diaryPhoto.setSequence(payload.getSequence());
 
-                // --- Geocoding 수행 (아직 정보가 없는 경우에만) ---
-                if (diaryPhoto.getLocation() != null &&
-                        (!StringUtils.hasText(diaryPhoto.getCountryName()) ||
-                                !StringUtils.hasText(diaryPhoto.getAdminAreaLevel1()) ||
-                                !StringUtils.hasText(diaryPhoto.getLocality()))) {
-                    try {
-                        String[] latLng = diaryPhoto.getLocation().split(",");
-                        if (latLng.length == 2) {
-                            double latitude = Double.parseDouble(latLng[0]);
-                            double longitude = Double.parseDouble(latLng[1]);
-                            GeocodingService.ParsedAddress parsedAddress = geocodingService.getParsedAddressFromCoordinates(latitude, longitude);
-                            if (parsedAddress != null) {
-                                diaryPhoto.setCountryName(parsedAddress.getCountryName());
-                                diaryPhoto.setAdminAreaLevel1(parsedAddress.getAdminAreaLevel1());
-                                diaryPhoto.setLocality(parsedAddress.getLocality());
-                                log.info("Diary ID {} - Photo ID {}: 일기 생성 중 Geocoding 완료", savedDiary.getId(), diaryPhoto.getId());
-                            }
-                        }
-                    } catch (NumberFormatException e) {
-                        log.warn("Diary ID {} - Photo ID {}: 잘못된 location 문자열 형식 ('{}'). Geocoding 건너뜁니다.", savedDiary.getId(), diaryPhoto.getId(), diaryPhoto.getLocation());
-                    } catch (Exception e) {
-                        log.warn("Diary ID {} - Photo ID {}: 일기 생성 중 Geocoding 오류: {}", savedDiary.getId(), diaryPhoto.getId(), e.getMessage());
-                    }
-                }
                 diaryPhotosForDiaryEntities.add(diaryPhoto);
 
                 String keywordStringFromFrontend = payload.getKeyword();

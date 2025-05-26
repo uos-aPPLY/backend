@@ -1,1 +1,1 @@
-http://3.35.21.209:8080/
+https://diarypic.com/

@@ -880,18 +880,37 @@ public class DiaryService {
 
     @Transactional
     public DiaryResponse restoreDiary(Long userId, Long diaryId) {
-        User user = userRepository.findById(userId).orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다."));
-        Diary diary = diaryRepository.findByIdAndUser(diaryId, user)
-                .filter(d -> d.getDeletedAt() != null)
-                .orElseThrow(() -> new EntityNotFoundException("휴지통에서 해당 일기를 찾을 수 없거나 이미 복원된 일기입니다. ID: " + diaryId));
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다. ID: " + userId));
 
-        diary.setDeletedAt(null);
-        Diary restoredDiary = diaryRepository.save(diary);
-        log.info("일기 ID {}를 복원했습니다.", diaryId);
+        // 1. 휴지통에서 복원할 일기 조회 (사용자 소유이며, 삭제된 상태인지 확인)
+        Diary diaryToRestore = diaryRepository.findByIdAndUser(diaryId, user) // findByIdAndUser 사용 (deletedAt IS NOT NULL 조건은 아래 filter로)
+                .filter(d -> d.getDeletedAt() != null) // 확실히 휴지통에 있는 일기인지 확인
+                .orElseThrow(() -> new EntityNotFoundException("휴지통에서 해당 일기를 찾을 수 없거나 이미 활성 상태입니다. ID: " + diaryId));
 
-        // 복원 후 앨범 재처리 (새로운 앨범이 생성될 수도 있음)
-        // 이 때 diaryPhotos가 null이거나 비어있다면 processDiaryAlbums 내부에서 처리됨.
-        albumService.processDiaryAlbums(restoredDiary, restoredDiary.getDiaryPhotos());
+        // 2. 복원하려는 날짜에 이미 활성 상태의 다른 일기가 있는지 확인
+        LocalDate targetDate = diaryToRestore.getDiaryDate();
+        Optional<Diary> existingActiveDiaryOnDate = diaryRepository.findByUserAndDiaryDateAndDeletedAtIsNull(user, targetDate);
+
+        if (existingActiveDiaryOnDate.isPresent()) {
+            // 복원하려는 일기와 다른 ID를 가진 활성 일기가 해당 날짜에 이미 존재한다면 복원 불가
+            if (!existingActiveDiaryOnDate.get().getId().equals(diaryToRestore.getId())) {
+                log.warn("일기 복원 실패: 사용자 ID {}, 날짜 {}에 이미 활성 상태의 일기(ID: {})가 존재합니다. 복원 시도 일기 ID: {}",
+                        userId, targetDate, existingActiveDiaryOnDate.get().getId(), diaryId);
+                throw new IllegalStateException("해당 날짜(" + targetDate + ")에 이미 다른 일기가 존재하여 복원할 수 없습니다.");
+            }
+        }
+
+        // 3. 일기 복원 (deletedAt을 null로 설정)
+        diaryToRestore.setDeletedAt(null);
+        if ("trashed".equalsIgnoreCase(diaryToRestore.getStatus())) { // 만약 "trashed" 상태를 사용했다면
+            diaryToRestore.setStatus("unconfirmed"); // 또는 원래 상태를 기억하고 있다면 그 상태로
+        }
+
+        Diary restoredDiary = diaryRepository.save(diaryToRestore);
+        log.info("일기 ID {}를 복원했습니다. 날짜: {}", diaryId, restoredDiary.getDiaryDate());
+
+        albumService.processDiaryAlbums(restoredDiary, new ArrayList<>(restoredDiary.getDiaryPhotos()));
 
         return DiaryResponse.from(restoredDiary);
     }

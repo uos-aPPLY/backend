@@ -120,29 +120,24 @@ public class DiaryService {
             }
         }
 
-        // 2. Diary 및 DiaryPhoto 기본 연결 및 저장 (대표사진 URL은 아직 미설정)
-        // createAndSaveDiaryAndAlbums 내부에서 content, emotionIcon 등 기본 정보와 사진 연결, Geocoding까지 처리
-        Diary diaryInProgress = createAndSaveDiaryAndAlbums(user, request.getContent(), request.getEmotionIcon(), diaryDate, photoPayloads, userId, false, true); // Geocoding 수행하도록 true 전달
+        Diary diaryInProgress = createAndSaveDiaryAndAlbums(user, request.getContent(), request.getEmotionIcon(), diaryDate, photoPayloads, userId, false, true);
 
-        // 3. 대표 사진 설정
         if (request.getRepresentativePhotoId() != null) {
             setExplicitRepresentativePhoto(diaryInProgress, request.getRepresentativePhotoId(), userId, currentPhotoIds);
         } else {
             setInitialRepresentativePhoto(diaryInProgress);
         }
 
-        // 4. 대표 사진 URL까지 포함하여 최종 저장 및 DB와 즉시 동기화
         Diary fullySavedDiary = diaryRepository.saveAndFlush(diaryInProgress);
         log.info("Diary ID {} (수동생성) 최종 저장 완료. 대표사진 URL: {}", fullySavedDiary.getId(), fullySavedDiary.getRepresentativePhotoUrl());
 
-        // 5. 앨범 처리 (모든 정보가 DB에 저장된 후)
-        albumService.processDiaryAlbums(fullySavedDiary, new ArrayList<>(fullySavedDiary.getDiaryPhotos()));
+        // DB에서 다시 조회하여 영속성 컨텍스트에 관리되는 엔티티로 앨범 처리
+        Diary diaryForAlbumProcessing = diaryRepository.findDiaryWithPhotosById(fullySavedDiary.getId())
+                .orElseThrow(() -> new EntityNotFoundException("앨범 처리용 일기를 찾을 수 없습니다. ID: " + fullySavedDiary.getId()));
+        albumService.processDiaryAlbums(diaryForAlbumProcessing, new ArrayList<>(diaryForAlbumProcessing.getDiaryPhotos()));
         log.info("Diary ID {} (수동생성) 앨범 처리 완료.", fullySavedDiary.getId());
 
-        // 6. 최종적으로 DB에서 다시 조회하여 응답 생성 (사진 목록 포함 보장)
-        Diary finalDiaryForResponse = diaryRepository.findById(fullySavedDiary.getId())
-                .orElseThrow(() -> new EntityNotFoundException("저장된 일기를 찾을 수 없습니다. ID: " + fullySavedDiary.getId()));
-        return DiaryResponse.from(finalDiaryForResponse);
+        return DiaryResponse.from(diaryForAlbumProcessing);
     }
 
 //    @Transactional
@@ -205,36 +200,32 @@ public class DiaryService {
 
         List<AiDiaryCreateRequest.FinalizedPhotoPayload> finalizedPhotoPayloads = aiDiaryCreateRequest.getFinalizedPhotos();
         if (finalizedPhotoPayloads == null || finalizedPhotoPayloads.isEmpty() || finalizedPhotoPayloads.size() > 9) {
-            throw new IllegalArgumentException("사진 정보가 올바르지 않습니다.");
+            throw new IllegalArgumentException("AI 일기 생성을 위한 사진 정보가 올바르지 않습니다 (1~9장 필요).");
         }
 
-        // 1. "generating" 상태로 Diary 임시 저장 (Geocoding은 아직 안 함)
-        // content, emotionIcon, representativePhotoUrl은 비동기 처리 후 채워짐
         Diary generatingDiaryEntity = Diary.builder()
                 .user(user)
                 .diaryDate(diaryDate)
                 .status("generating")
-                .content("") // 임시값
-                .emotionIcon("smile") // 초기값 설정 가능
+                .content("")
+                .emotionIcon("smile")
                 .isFavorited(false)
                 .diaryPhotos(new ArrayList<>())
                 .build();
         Diary savedGeneratingDiary = diaryRepository.save(generatingDiaryEntity);
         log.info("일기 ID {} (날짜: {}) 'generating' 상태로 임시 저장됨.", savedGeneratingDiary.getId(), diaryDate);
 
-        // 2. DiaryPhoto들을 임시 저장된 Diary와 연결 (DB에는 아직 미반영, 컬렉션에만 추가 후 비동기에서 처리)
-        // 이 단계에서 photoPayloads를 비동기 메소드로 넘겨서 거기서 DiaryPhoto 연결 및 저장을 처리.
-        // 바로 아래 processAiDiaryGeneration 호출.
+        // 비동기 작업에 필요한 photo ID와 keyword 정보만 추출하여 전달 (DiaryPhoto 객체 직접 전달 X)
+        List<AiDiaryCreateRequest.FinalizedPhotoPayload> payloadsForAsync = new ArrayList<>(finalizedPhotoPayloads);
+        processAiDiaryGeneration(user.getId(), savedGeneratingDiary.getId(), user.getWritingStylePrompt(), payloadsForAsync, aiDiaryCreateRequest.getRepresentativePhotoId());
 
-        // 3. 비동기 AI 처리 호출
-        processAiDiaryGeneration(user, savedGeneratingDiary.getId(), aiDiaryCreateRequest);
 
-        // 4. 클라이언트에는 "generating" 상태의 DiaryResponse 즉시 반환
-        // 이때 photos 리스트는 비어있음 (실제 연결 및 저장은 비동기에서)
-        // DiaryResponse.from()이 DB lazy loading을 트리거하지 않도록,
-        // savedGeneratingDiary 객체 (photos 컬렉션이 비어있는)를 그대로 사용.
+        // 클라이언트에는 사진 목록이 비어있는 DiaryResponse를 반환할 수 있음 (실제 연결은 비동기에서)
+        // 또는 임시로 연결된 것처럼 DTO를 만들 수도 있지만, 비동기 완료 후 재조회가 정확함.
+        // 여기서는 ID와 기본 정보만 있는 Diary 객체로 DTO 생성
         return DiaryResponse.from(savedGeneratingDiary);
     }
+
 
 //    @Transactional
 //    public DiaryResponse requestAiDiaryModification(Long userId, Long diaryId, DiaryAiUpdateRequest request) {
@@ -259,12 +250,17 @@ public class DiaryService {
 //    }
 
 
-    @Async("diaryAiTaskExecutor") // AI 작업용 별도 스레드 풀
+    @Async("diaryAiTaskExecutor")
     @Transactional
-    public void processAiDiaryGeneration(User user, Long diaryId, AiDiaryCreateRequest aiDiaryCreateRequest) {
-        List<AiDiaryCreateRequest.FinalizedPhotoPayload> finalizedPhotoPayloads = aiDiaryCreateRequest.getFinalizedPhotos();
+    public void processAiDiaryGeneration(Long userId, Long diaryId, String userWritingStyle,
+                                         List<AiDiaryCreateRequest.FinalizedPhotoPayload> finalizedPhotoPayloads,
+                                         Long representativePhotoIdFromRequest) { // 대표사진 ID도 받음
         log.info("비동기 AI 일기 생성 시작: Diary ID {}", diaryId);
-        Diary diaryToUpdate = diaryRepository.findById(diaryId).orElse(null);
+        // 비동기 메소드 시작 시, 반드시 ID로 엔티티를 다시 조회하여 현재 트랜잭션의 영속성 컨텍스트에 올림
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("비동기 작업 중 사용자를 찾을 수 없습니다. User ID: " + userId));
+        Diary diaryToUpdate = diaryRepository.findDiaryWithPhotosById(diaryId) // 사진 함께 로드
+                .orElse(null);
 
         if (diaryToUpdate == null || !"generating".equalsIgnoreCase(diaryToUpdate.getStatus())) {
             log.warn("비동기 AI 일기 생성 중단: Diary ID {} 찾을 수 없거나 상태가 'generating' 아님 (현재: {}).",
@@ -273,24 +269,27 @@ public class DiaryService {
         }
 
         try {
-            // 1. DiaryPhoto 연결 및 Geocoding 수행 후 저장
+            // 1. DiaryPhoto 연결 및 Geocoding (이전에 GeocodingService가 주입되어 있다고 가정)
             List<DiaryPhoto> actualDiaryPhotos = new ArrayList<>();
             if (finalizedPhotoPayloads != null) {
                 finalizedPhotoPayloads.sort(Comparator.comparingInt(AiDiaryCreateRequest.FinalizedPhotoPayload::getSequence));
                 for (AiDiaryCreateRequest.FinalizedPhotoPayload payload : finalizedPhotoPayloads) {
                     DiaryPhoto diaryPhoto = photoRepository.findById(payload.getPhotoId())
                             .orElseThrow(() -> new EntityNotFoundException("AI 생성 중 사진 못찾음 ID: " + payload.getPhotoId()));
-                    if (!diaryPhoto.getUserId().equals(user.getId())) { // user 객체 직접 비교
+                    if (!diaryPhoto.getUserId().equals(userId)) {
                         throw new SecurityException("Photo access denied: " + payload.getPhotoId());
                     }
                     diaryPhoto.setDiary(diaryToUpdate);
                     diaryPhoto.setSequence(payload.getSequence());
 
-                    // Geocoding 수행
+                    // Geocoding (PhotoService에서 이미 했다면 중복, 아니라면 여기서 수행)
+                    // 현재 PhotoService.processAndSavePhotoAsync에서 Geocoding을 하고 있으므로 여기선 생략 가능
+                    // 만약 PhotoService에서 Geocoding을 안한다면 아래 로직 필요:
+                    /*
                     if (diaryPhoto.getLocation() != null &&
-                            (!StringUtils.hasText(diaryPhoto.getCountryName()) ||
-                                    !StringUtils.hasText(diaryPhoto.getAdminAreaLevel1()) ||
-                                    !StringUtils.hasText(diaryPhoto.getLocality()))) {
+                        (!StringUtils.hasText(diaryPhoto.getCountryName()) ||
+                         !StringUtils.hasText(diaryPhoto.getAdminAreaLevel1()) ||
+                         !StringUtils.hasText(diaryPhoto.getLocality()))) {
                         try {
                             String[] latLng = diaryPhoto.getLocation().split(",");
                             if (latLng.length == 2) {
@@ -307,20 +306,20 @@ public class DiaryService {
                             log.warn("Diary ID {} - Photo ID {}: 비동기 Geocoding 오류: {}", diaryId, diaryPhoto.getId(), e.getMessage());
                         }
                     }
+                    */
                     actualDiaryPhotos.add(diaryPhoto);
                 }
                 diaryToUpdate.getDiaryPhotos().clear();
                 diaryToUpdate.getDiaryPhotos().addAll(actualDiaryPhotos);
             }
-            // 사진 정보 (Geocoding 포함) 및 연결 정보를 먼저 DB에 반영
-            diaryRepository.saveAndFlush(diaryToUpdate);
-            log.info("Diary ID {}에 사진 {}개 연결 및 Geocoding 후 저장 (비동기).", diaryId, actualDiaryPhotos.size());
+            // 사진 정보 (Geocoding 결과 포함) 및 연결 정보를 먼저 DB에 반영
+            diaryRepository.saveAndFlush(diaryToUpdate); // 즉시 DB 반영
+            log.info("Diary ID {}에 사진 {}개 연결 및 (필요시) Geocoding 후 저장 (비동기).", diaryId, actualDiaryPhotos.size());
 
-            // 2. AI 서버 요청 DTO 생성 (이때 diaryPhoto.getPhotoUrl()은 Public URL)
-            String userWritingStyle = user.getWritingStylePrompt();
-            if (!StringUtils.hasText(userWritingStyle)) userWritingStyle = "오늘 있었던 일을 바탕으로 일기를 작성해줘.";
+            // 2. AI 서버 요청 DTO 생성 (이제 diaryToUpdate.getDiaryPhotos()는 최신 상태)
+            String actualUserWritingStyle = StringUtils.hasText(userWritingStyle) ? userWritingStyle : "오늘 있었던 일을 바탕으로 일기를 작성해줘.";
 
-            List<ImageInfoDto> imageInfoForAi = diaryToUpdate.getDiaryPhotos().stream() // DB에 저장된 최신 사진 정보 사용
+            List<ImageInfoDto> imageInfoForAi = diaryToUpdate.getDiaryPhotos().stream()
                     .map(dp -> {
                         String publicImageUrl = dp.getPhotoUrl();
                         String combinedAddress = Stream.of(dp.getLocality(), dp.getAdminAreaLevel1(), dp.getCountryName())
@@ -328,32 +327,36 @@ public class DiaryService {
                         AiDiaryCreateRequest.FinalizedPhotoPayload currentPayload = finalizedPhotoPayloads.stream()
                                 .filter(p -> p.getPhotoId().equals(dp.getId())).findFirst().orElse(null);
                         String keyword = currentPayload != null ? currentPayload.getKeyword() : "";
-
                         return new ImageInfoDto(publicImageUrl,
                                 dp.getShootingDateTime() != null ? dp.getShootingDateTime().format(ISO_LOCAL_DATE_TIME_FORMATTER) : null,
                                 StringUtils.hasText(combinedAddress) ? combinedAddress : null, keyword, dp.getSequence());
                     }).collect(Collectors.toList());
-            AiDiaryGenerateRequestDto aiRequest = new AiDiaryGenerateRequestDto(userWritingStyle, imageInfoForAi);
+            AiDiaryGenerateRequestDto aiRequest = new AiDiaryGenerateRequestDto(actualUserWritingStyle, imageInfoForAi);
 
             // 3. AI 서버에 일기 생성 요청
             aiServerService.requestDiaryGeneration(aiRequest)
                     .subscribe(aiResponse -> {
-                        Diary diaryToFinalize = diaryRepository.findById(diaryId).orElse(null); // 다시 조회
+                        // subscribe 콜백 내에서는 트랜잭션 전파에 유의. 이 메소드가 @Transactional이므로 같은 트랜잭션에서 동작.
+                        // 하지만 안전하게 하려면 diaryToUpdate를 다시 조회하거나, 메소드를 분리하는 것도 방법.
+                        // 여기서는 diaryToUpdate가 계속 영속 상태임을 가정하고 사용.
+                        Diary diaryToFinalize = diaryRepository.findDiaryWithPhotosById(diaryId).orElse(null); // 다시 조회하여 최신 상태 사용
                         if (diaryToFinalize == null || !"generating".equalsIgnoreCase(diaryToFinalize.getStatus())) {
                             log.warn("AI 응답 후 Diary ID {} 찾을 수 없거나 상태 변경됨.", diaryId); return;
                         }
+
                         if (aiResponse != null && StringUtils.hasText(aiResponse.getDiary())) {
                             diaryToFinalize.setContent(aiResponse.getDiary());
                             diaryToFinalize.setEmotionIcon(aiResponse.getEmoji());
                             diaryToFinalize.setStatus("unconfirmed");
 
-                            if (aiDiaryCreateRequest.getRepresentativePhotoId() != null) {
-                                setExplicitRepresentativePhoto(diaryToFinalize, aiDiaryCreateRequest.getRepresentativePhotoId(), user.getId(),
+                            if (representativePhotoIdFromRequest != null) {
+                                setExplicitRepresentativePhoto(diaryToFinalize, representativePhotoIdFromRequest, userId,
                                         diaryToFinalize.getDiaryPhotos().stream().map(DiaryPhoto::getId).collect(Collectors.toList()));
                             } else {
                                 setInitialRepresentativePhoto(diaryToFinalize);
                             }
-                            Diary finalSavedDiary = diaryRepository.saveAndFlush(diaryToFinalize); // 최종 저장 및 플러시
+
+                            Diary finalSavedDiary = diaryRepository.saveAndFlush(diaryToFinalize);
                             log.info("비동기 AI 일기 생성 DB 최종 저장 완료: Diary ID {}", diaryId);
 
                             albumService.processDiaryAlbums(finalSavedDiary, new ArrayList<>(finalSavedDiary.getDiaryPhotos()));
@@ -442,33 +445,26 @@ public class DiaryService {
 //        }
 //    }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public AiDiaryResponseDto suggestAiModification(Long userId, Long diaryId, DiaryAiUpdateRequest clientRequest) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다. ID: " + userId));
         Diary diary = diaryRepository.findByIdAndUserAndDeletedAtIsNull(diaryId, user)
                 .orElseThrow(() -> new EntityNotFoundException("수정 제안을 요청할 일기를 찾을 수 없습니다. ID: " + diaryId));
-
-        // 사용자의 글쓰기 스타일 가져오기
         String userWritingStyle = user.getWritingStylePrompt();
-
         AiDiaryModifyRequestDto aiModifyRequest = new AiDiaryModifyRequestDto(
                 userWritingStyle,
                 clientRequest.getMarkedDiaryContent(),
                 clientRequest.getUserRequest()
         );
-
         log.info("AI 서버에 일기 수정 제안 요청: Diary ID {}", diaryId);
-        // AI 서버에 수정 요청 (동기적으로 결과 대기)
         AiDiaryResponseDto aiSuggestion = aiServerService.requestDiaryModification(aiModifyRequest).block();
-
         if (aiSuggestion == null || !StringUtils.hasText(aiSuggestion.getDiary())) {
             log.error("AI 서버로부터 일기 수정 제안을 받지 못했습니다. Diary ID: {}", diaryId);
             return new AiDiaryResponseDto("AI 수정 제안을 생성하는 데 실패했습니다. 원본 내용을 확인해주세요.", diary.getEmotionIcon());
         }
-
         log.info("AI 서버로부터 일기 수정 제안 수신 완료: Diary ID {}", diaryId);
-        return aiSuggestion; // AI가 제안한 내용과 이모티콘을 그대로 반환
+        return aiSuggestion;
     }
 
     // --- 일기 상태 확인용 서비스 메소드 ---
@@ -513,15 +509,15 @@ public class DiaryService {
         Diary diary = Diary.builder()
                 .user(user)
                 .content(content)
-                .emotionIcon(emotionIcon) // 초기 아이콘 설정 (AI 생성 시에는 aiResponse.getEmoji()로 덮어쓰여짐)
+                .emotionIcon(emotionIcon)
                 .diaryDate(diaryDate)
                 .isFavorited(false)
-                .status(isAiGenerated ? (content.isEmpty() ? "generating" : "unconfirmed") : "confirmed") // AI 생성이고 아직 content 없으면 generating
+                .status(isAiGenerated ? (StringUtils.isEmpty(content) ? "generating" : "unconfirmed") : "confirmed")
                 .diaryPhotos(new ArrayList<>())
                 .build();
-        Diary savedDiary = diaryRepository.save(diary);
+        Diary savedDiary = diaryRepository.save(diary); // 1차 저장 (ID 확보)
 
-        List<DiaryPhoto> diaryPhotosForDiaryEntities = new ArrayList<>();
+        List<DiaryPhoto> actualDiaryPhotos = new ArrayList<>();
         if (finalizedPhotoPayloads != null) {
             finalizedPhotoPayloads.sort(Comparator.comparingInt(AiDiaryCreateRequest.FinalizedPhotoPayload::getSequence));
             for (AiDiaryCreateRequest.FinalizedPhotoPayload payload : finalizedPhotoPayloads) {
@@ -533,7 +529,7 @@ public class DiaryService {
                 diaryPhoto.setDiary(savedDiary);
                 diaryPhoto.setSequence(payload.getSequence());
 
-                if (performGeocoding) { // Geocoding 수행 여부 플래그 확인
+                if (performGeocoding) {
                     if (diaryPhoto.getLocation() != null &&
                             (!StringUtils.hasText(diaryPhoto.getCountryName()) ||
                                     !StringUtils.hasText(diaryPhoto.getAdminAreaLevel1()) ||
@@ -555,20 +551,15 @@ public class DiaryService {
                         }
                     }
                 }
-                diaryPhotosForDiaryEntities.add(diaryPhoto);
+                actualDiaryPhotos.add(diaryPhoto);
                 // 키워드 처리 로직 (생략)
             }
         }
         savedDiary.getDiaryPhotos().clear();
-        savedDiary.getDiaryPhotos().addAll(diaryPhotosForDiaryEntities);
-        // 사진 정보(Geocoding 결과 포함) 및 연결 정보를 먼저 DB에 반영
+        savedDiary.getDiaryPhotos().addAll(actualDiaryPhotos);
         Diary fullySavedDiary = diaryRepository.saveAndFlush(savedDiary);
-        log.info("Diary ID {}에 사진 {}개 연결 및 Geocoding (필요시) 후 저장.", fullySavedDiary.getId(), fullySavedDiary.getDiaryPhotos().size());
-
-        // 앨범 처리는 이 메소드 호출부에서, 모든 정보 (대표사진 포함)가 Diary에 설정된 후 수행
-        // if (!diaryPhotosForDiaryEntities.isEmpty()) {
-        //    albumService.processDiaryAlbums(fullySavedDiary, diaryPhotosForDiaryEntities);
-        // }
+        log.info("Diary ID {}에 사진 {}개 연결 및 Geocoding ({} 수행) 후 저장.",
+                fullySavedDiary.getId(), fullySavedDiary.getDiaryPhotos().size(), performGeocoding ? "요청됨" : "건너뜀");
         return fullySavedDiary;
     }
 
@@ -727,17 +718,20 @@ public class DiaryService {
 //        return DiaryResponse.from(diaryRepository.save(diary));
 //    }
 
-    private void setExplicitRepresentativePhoto(Diary diary, Long representativePhotoId, Long userId, List<Long> currentDiaryPhotoIds) {
+    private void setExplicitRepresentativePhoto(Diary diary, Long representativePhotoId, Long userId, List<Long> currentDiaryPhotoIdsInRequest) {
         DiaryPhoto repPhoto = photoRepository.findById(representativePhotoId)
                 .orElseThrow(() -> new EntityNotFoundException("대표 사진으로 지정할 사진을 찾을 수 없습니다. ID: " + representativePhotoId));
         if (!repPhoto.getUserId().equals(userId)) {
             throw new SecurityException("대표 사진으로 지정할 사진에 대한 접근 권한이 없습니다.");
         }
-        boolean isPhotoInDiary = diary.getDiaryPhotos().stream().anyMatch(dp -> dp.getId().equals(representativePhotoId));
-        if (!isPhotoInDiary && (currentDiaryPhotoIds == null || !currentDiaryPhotoIds.contains(representativePhotoId))) {
-            throw new IllegalArgumentException("선택된 대표 사진은 현재 일기에 포함된 사진이어야 합니다.");
+        boolean isPhotoInDiaryList = diary.getDiaryPhotos().stream().anyMatch(dp -> dp.getId().equals(representativePhotoId));
+        if (!isPhotoInDiaryList) {
+            // 일기 생성 초기 단계에서는 currentDiaryPhotoIdsInRequest로 판단 가능
+            if (currentDiaryPhotoIdsInRequest == null || !currentDiaryPhotoIdsInRequest.contains(representativePhotoId)) {
+                throw new IllegalArgumentException("선택된 대표 사진은 현재 일기에 포함된 사진이어야 합니다.");
+            }
         }
-        diary.setRepresentativePhotoUrl(repPhoto.getPhotoUrl());
+        diary.setRepresentativePhotoUrl(repPhoto.getPhotoUrl()); // Public URL 저장
     }
 
     private void setInitialRepresentativePhoto(Diary diary) {
@@ -746,9 +740,9 @@ public class DiaryService {
         }
         if (diary.getDiaryPhotos() != null && !diary.getDiaryPhotos().isEmpty()) {
             diary.getDiaryPhotos().stream()
-                    .filter(dp -> dp.getSequence() != null)
+                    .filter(dp -> dp.getSequence() != null && StringUtils.hasText(dp.getPhotoUrl()))
                     .min(Comparator.comparingInt(DiaryPhoto::getSequence))
-                    .ifPresent(firstPhoto -> diary.setRepresentativePhotoUrl(firstPhoto.getPhotoUrl()));
+                    .ifPresent(firstPhoto -> diary.setRepresentativePhotoUrl(firstPhoto.getPhotoUrl())); // Public URL 저장
         } else {
             diary.setRepresentativePhotoUrl(null);
         }

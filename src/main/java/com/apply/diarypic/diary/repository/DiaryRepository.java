@@ -41,6 +41,17 @@ public interface DiaryRepository extends JpaRepository<Diary, Long> {
     @Query("SELECT COUNT(d) FROM Diary d WHERE d.user = :user AND d.deletedAt IS NULL AND d.diaryDate BETWEEN :startDate AND :endDate")
     long countByUserAndDiaryDateBetweenAndDeletedAtIsNull(@Param("user") User user, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 
+
+    @Query("SELECT d FROM Diary d LEFT JOIN FETCH d.diaryPhotos WHERE d.id = :id")
+    Optional<Diary> findDiaryWithPhotosById(@Param("id") Long id);
+
+    // getDiaryById, getDiaryByDate 용 (User 조건 포함)
+    @Query("SELECT d FROM Diary d LEFT JOIN FETCH d.diaryPhotos dp WHERE d.id = :id AND d.user = :user AND d.deletedAt IS NULL")
+    Optional<Diary> findDiaryWithPhotosByIdAndUserAndDeletedAtIsNull(@Param("id") Long id, @Param("user") User user);
+
+    @Query("SELECT d FROM Diary d LEFT JOIN FETCH d.diaryPhotos dp WHERE d.user = :user AND d.diaryDate = :diaryDate AND d.deletedAt IS NULL")
+    Optional<Diary> findDiaryWithPhotosByUserAndDiaryDateAndDeletedAtIsNull(@Param("user") User user, @Param("diaryDate") LocalDate diaryDate);
+
     /**
      * 사용자의 활성 일기 중에서 내용(content)에 특정 키워드가 포함된 일기를 검색합니다. (대소문자 구분 없음)
      * 검색 결과는 최신 일기 순서 (diaryDate DESC, createdAt DESC)로 정렬됩니다.

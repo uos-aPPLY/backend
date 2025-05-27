@@ -174,8 +174,8 @@ public class AlbumService {
         Optional<Diary> latestDiaryOpt = diaryAlbumRepository.findByAlbum(album).stream()
                 .map(DiaryAlbum::getDiary)
                 .filter(d -> d != null && d.getDeletedAt() == null) // Diary null 체크 및 활성 일기만
-                .max(Comparator.comparing(Diary::getDiaryDate, Comparator.nullsLast(Comparator.reverseOrder())) // 수정: 날짜 내림차순 (최신순)
-                        .thenComparing(Diary::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder()))); // 수정: 생성시간 내림차순 (최신순)
+                .max(Comparator.comparing(Diary::getDiaryDate, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(Diary::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())));
 
         String newCoverImageUrl = null; // 여기서 초기화
 

@@ -109,13 +109,17 @@ server:
 # 공통 로깅 설정
 logging:
   level:
-    root: INFO
+    root: INFO # 애플리케이션 전체의 기본 로그 레벨
+
+    # 스프링 프레임워크 관련 로그 레벨
     org.springframework.security: WARN
-    c.a.d.g.s.jwt: WARN
-    c.a.d.g.s.jwt.JwtAuthenticationFilter: WARN
-    c.a.diarypic.terms.service.TermsService: WARN
     org.hibernate.SQL: WARN
     org.hibernate.type.descriptor.sql: WARN
+
+    com.apply.diarypic.global.security.jwt: WARN
+    com.apply.diarypic.global.security.jwt.JwtAuthenticationFilter: WARN
+
+    com.apply.diarypic.terms.service.TermsService: WARN
     # c.a.diarypic: WARN
     # c.a.diarypic.terms.service.TermsService: WARN
 

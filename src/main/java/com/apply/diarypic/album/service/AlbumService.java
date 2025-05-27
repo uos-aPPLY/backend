@@ -69,13 +69,10 @@ public class AlbumService {
 
     @Transactional
     public void processDiaryAlbums(Diary diary, List<DiaryPhoto> diaryPhotos) {
-        log.info("processDiaryAlbums 시작: Diary ID {}", diary.getId());
         if (diary.getDeletedAt() != null) {
-            log.info("일기 ID {}는 휴지통 상태이므로 앨범 처리를 건너뜁니다. 단, 기존 연결 앨범들의 커버 업데이트 시도.", diary.getId());
-            Set<Album> albumsToUpdateCover = new HashSet<>();
-            diaryAlbumRepository.findByDiary(diary).forEach(da -> albumsToUpdateCover.add(da.getAlbum()));
-            albumsToUpdateCover.forEach(this::updateAlbumCoverImage); // 커버만 업데이트 시도
-            // 휴지통으로 갈 때 checkAndRemoveAlbumIfEmpty는 DiaryService.deleteDiary에서 호출됨
+            log.info("일기 ID {}는 휴지통 상태이므로 앨범 처리를 건너뜁니다.", diary.getId());
+            // 소프트 삭제 시, 해당 일기가 속했던 앨범들의 커버 이미지 업데이트 필요
+            diaryAlbumRepository.findByDiary(diary).forEach(da -> updateAlbumCoverImage(da.getAlbum())); // <--- 이 부분 중요
             return;
         }
 
@@ -90,10 +87,9 @@ public class AlbumService {
                 }
             }
         }
-        log.debug("Diary ID {}: 생성/업데이트될 앨범 이름 목록: {}", diary.getId(), newAlbumNamesForThisDiary);
 
         List<DiaryAlbum> existingDiaryAlbums = diaryAlbumRepository.findByDiary(diary);
-        Set<Album> affectedAlbums = new HashSet<>();
+        Set<Album> affectedAlbums = new HashSet<>(); // 변경이 발생한 앨범들 추적
 
         // 제거할 앨범 연결
         List<DiaryAlbum> albumsLinksToRemove = existingDiaryAlbums.stream()
@@ -101,79 +97,56 @@ public class AlbumService {
                 .collect(Collectors.toList());
 
         if (!albumsLinksToRemove.isEmpty()) {
-            albumsLinksToRemove.forEach(da -> {
-                log.debug("Diary ID {}: 앨범 '{}' 연결 제거 대상 추가", diary.getId(), da.getAlbum().getName());
-                affectedAlbums.add(da.getAlbum());
-            });
-            try {
-                diaryAlbumRepository.deleteAll(albumsLinksToRemove);
-                log.info("일기 ID {}에서 다음 앨범 연결 제거 완료: {}", diary.getId(), albumsLinksToRemove.stream().map(da -> da.getAlbum().getName()).collect(Collectors.toList()));
-            } catch (Exception e) {
-                log.error("Diary ID {}: 앨범 연결 제거 중 오류 발생", diary.getId(), e);
-                // 롤백되도록 예외를 다시 던지거나, 다른 방식으로 처리
-                throw new RuntimeException("앨범 연결 제거 중 오류 발생", e);
-            }
+            albumsLinksToRemove.forEach(da -> affectedAlbums.add(da.getAlbum()));
+            diaryAlbumRepository.deleteAll(albumsLinksToRemove);
+            log.info("일기 ID {}에서 다음 앨범 연결 제거: {}", diary.getId(), albumsLinksToRemove.stream().map(da -> da.getAlbum().getName()).collect(Collectors.toList()));
         }
 
-        Set<String> existingButNotRemovedAlbumNames = existingDiaryAlbums.stream()
-                .filter(da -> newAlbumNamesForThisDiary.contains(da.getAlbum().getName())) // 삭제 대상이 아닌 기존 연결
+        Set<String> existingAlbumNames = existingDiaryAlbums.stream() // 이전에 연결된 앨범 이름들
                 .map(da -> da.getAlbum().getName())
                 .collect(Collectors.toSet());
 
-        // 추가할 앨범 연결 (새로운 이름의 앨범에 대해서만)
+        // 추가할 앨범 연결
         newAlbumNamesForThisDiary.forEach(name -> {
-            if (!existingButNotRemovedAlbumNames.contains(name)) { // 기존에 유지되는 연결이 아닌, 순수하게 새로 추가될 앨범 이름
-                Album album = albumRepository.findByNameAndUser(name, user)
-                        .orElseGet(() -> {
-                            log.info("새로운 앨범 생성: '{}' for user {}", name, user.getId());
-                            Album newAlbum = Album.builder()
-                                    .name(name)
-                                    .user(user)
-                                    .build();
-                            try {
-                                return albumRepository.save(newAlbum);
-                            } catch (Exception e) {
-                                log.error("새로운 앨범 '{}' 저장 중 오류 발생 for user {}", name, user.getId(), e);
-                                throw new RuntimeException("새 앨범 저장 중 오류", e);
-                            }
-                        });
-                affectedAlbums.add(album);
+            // Album album = albumRepository.findByNameAndUser(name, user) // findByNameAndUser로 찾고 orElseGet으로 생성
+            //         .orElseGet(() -> { // ... 새 앨범 생성 로직 ... });
+            // 위 로직은 이미 제공해주신 코드에 잘 반영되어 있음.
+            // 중요한 것은 affectedAlbums에 이 album을 추가하는 것.
 
-                // 중복 연결 방지 (이미 연결 로직이 복잡하므로, findByDiaryAndAlbum으로 한 번 더 확인하는 것이 안전)
-                if (diaryAlbumRepository.findByDiaryAndAlbum(diary, album).isEmpty()) {
-                    DiaryAlbum diaryAlbum = DiaryAlbum.builder().diary(diary).album(album).build();
-                    try {
-                        diaryAlbumRepository.save(diaryAlbum);
-                        log.info("일기 ID {}를 앨범 '{}'(ID:{})에 매핑 완료.", diary.getId(), album.getName(), album.getId());
-                    } catch (Exception e) {
-                        log.error("일기 ID {}를 앨범 '{}'에 매핑 중 오류 발생", diary.getId(), album.getName(), e);
-                        throw new RuntimeException("일기-앨범 매핑 저장 중 오류", e);
-                    }
-                }
+            // 수정된 로직 (앨범을 가져오거나 생성하고 affectedAlbums에 추가)
+            Album album = albumRepository.findByNameAndUser(name, user)
+                    .orElseGet(() -> {
+                        log.info("새로운 앨범 생성 시도 (processDiaryAlbums): '{}' for user {}", name, user.getId());
+                        // 새 앨범의 커버 이미지는 updateAlbumCoverImage에서 설정됨
+                        Album newAlbum = Album.builder()
+                                .name(name)
+                                .user(user)
+                                // .coverImageUrl(null) // 초기에는 null 또는 첫번째 사진으로 설정 가능하나, updateAlbumCoverImage에서 최종 결정
+                                .build();
+                        return albumRepository.save(newAlbum);
+                    });
+            affectedAlbums.add(album); // 생성되거나 찾아진 앨범을 affectedAlbums에 추가
+
+            // 이미 연결되어 있지 않다면 새로 연결 (기존 코드와 유사)
+            // if (existingDiaryAlbums.stream().noneMatch(da -> da.getAlbum().getId().equals(album.getId()))) {
+            // 위 조건은 이미 제거된 연결을 고려하지 못하므로, diaryAlbumRepository.findByDiaryAndAlbum 사용이 더 정확
+            if (diaryAlbumRepository.findByDiaryAndAlbum(diary, album).isEmpty()) { // 수정: findByDiaryAndAlbum은 Optional을 반환
+                DiaryAlbum diaryAlbum = DiaryAlbum.builder().diary(diary).album(album).build();
+                diaryAlbumRepository.save(diaryAlbum);
+                log.info("일기 ID {}를 앨범 '{}'(ID:{})에 매핑 완료.", diary.getId(), album.getName(), album.getId());
             }
         });
 
-        // 기존 연결 중 유지되는 앨범도 affectedAlbums에 포함
+        // 기존 연결 중 유지되는 앨범도 affectedAlbums에 포함 (커버 이미지 업데이트 대상)
         existingDiaryAlbums.stream()
-                .filter(da -> newAlbumNamesForThisDiary.contains(da.getAlbum().getName()))
-                .forEach(da -> affectedAlbums.add(da.getAlbum()));
+                .filter(da -> newAlbumNamesForThisDiary.contains(da.getAlbum().getName())) // 새 앨범 목록에도 여전히 존재하는 연결
+                .forEach(da -> affectedAlbums.add(da.getAlbum())); // 해당 앨범을 affectedAlbums에 추가
 
-        log.info("Diary ID {}: 최종적으로 영향을 받은 앨범들 (커버 업데이트 및 빈 앨범 체크 대상): {}", diary.getId(), affectedAlbums.stream().map(Album::getName).collect(Collectors.toSet()));
+        // 영향을 받은 모든 앨범에 대해 커버 이미지 업데이트 및 빈 앨범 체크
         affectedAlbums.forEach(album -> {
-            try {
-                log.debug("Diary ID {}: 앨범 '{}' 커버 업데이트 및 빈 앨범 체크 시작", diary.getId(), album.getName());
-                updateAlbumCoverImage(album);
-                checkAndRemoveAlbumIfEmpty(album);
-                log.debug("Diary ID {}: 앨범 '{}' 커버 업데이트 및 빈 앨범 체크 완료", diary.getId(), album.getName());
-            } catch (Exception e) {
-                log.error("Diary ID {}: 앨범 '{}' 처리 중 오류 발생", diary.getId(), album.getName(), e);
-                // 이 예외를 어떻게 처리할지 결정 필요. 롤백을 원하면 다시 던져야 함.
-                // 개별 앨범 처리 실패가 전체를 롤백해야 하는가? 아니면 일부만 실패로 남길 것인가?
-                // 현재는 @Transactional이므로 하나의 실패가 전체 롤백.
-                throw new RuntimeException("앨범 처리 중 오류 (" + album.getName() + ")", e);
-            }
+            updateAlbumCoverImage(album); // 커버 이미지 먼저 업데이트
+            checkAndRemoveAlbumIfEmpty(album); // 그 다음 빈 앨범인지 체크
         });
-        log.info("processDiaryAlbums 종료: Diary ID {}", diary.getId());
     }
 
     private String determineAlbumName(String countryName, String adminAreaLevel1, String locality) {

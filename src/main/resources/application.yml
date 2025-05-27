@@ -109,10 +109,17 @@ server:
 # 공통 로깅 설정
 logging:
   level:
-    org.hibernate.SQL: debug
-    org.hibernate.type: trace
-    com.apply.diarypic.global.security.jwt: DEBUG
-    org.springframework.security: DEBUG
+    root: INFO
+    org.springframework.security: WARN
+    c.a.d.g.s.jwt: WARN
+    org.hibernate.SQL: WARN
+    org.hibernate.type.descriptor.sql: WARN
+    # c.a.diarypic: WARN
+    # c.a.diarypic.terms.service.TermsService: WARN
+
+# spring:
+#  jpa:
+#    show-sql: false # 이것도 방법이지만, 위 로거 설정이 더 세밀함
 
 # baseUrl 설정
 base-url: ${BASE_URL:http://localhost:8080}

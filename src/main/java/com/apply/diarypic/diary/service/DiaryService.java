@@ -109,6 +109,10 @@ public class DiaryService {
                 .orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다."));
         LocalDate diaryDate = request.getDiaryDate() != null ? request.getDiaryDate() : LocalDate.now();
 
+        diaryRepository.findByUserAndDiaryDateAndDeletedAtIsNull(user, diaryDate).ifPresent(d -> {
+            throw new IllegalArgumentException("해당 날짜(" + diaryDate + ")에 이미 일기가 존재합니다. ID: " + d.getId());
+        });
+
         List<AiDiaryCreateRequest.FinalizedPhotoPayload> photoPayloads = new ArrayList<>();
         List<Long> currentPhotoIds = new ArrayList<>();
 

@@ -190,9 +190,8 @@ public class AlbumService {
         }
     }
 
-    // AlbumService.java
     @Transactional
-    void updateAlbumCoverImage(Album album) {
+    void updateAlbumCoverImage(Album album) { // 접근 제어자는 package-private 또는 public
         if (album == null) {
             log.debug("updateAlbumCoverImage: album이 null이므로 커버 이미지 업데이트를 건너뜁니다.");
             return;
@@ -201,22 +200,22 @@ public class AlbumService {
 
         Optional<Diary> latestDiaryOpt = diaryAlbumRepository.findByAlbum(album).stream()
                 .map(DiaryAlbum::getDiary)
-                .filter(d -> d.getDeletedAt() == null)
-                .max(Comparator.comparing(Diary::getDiaryDate, Comparator.nullsLast(Comparator.reverseOrder()))
-                        .thenComparing(Diary::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())));
+                .filter(d -> d != null && d.getDeletedAt() == null) // Diary null 체크 및 활성 일기만
+                .max(Comparator.comparing(Diary::getDiaryDate, Comparator.nullsLast(Comparator.reverseOrder())) // 수정: 날짜 내림차순 (최신순)
+                        .thenComparing(Diary::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder()))); // 수정: 생성시간 내림차순 (최신순)
 
-        String newCoverImageUrl = null;
+        String newCoverImageUrl = null; // 여기서 초기화
 
         if (latestDiaryOpt.isPresent()) {
             Diary latestDiary = latestDiaryOpt.get();
             log.info("앨범 ID {} 커버 업데이트: 최신 일기 ID {} (날짜: {}) 찾음.", album.getId(), latestDiary.getId(), latestDiary.getDiaryDate());
 
-            // 1. 최신 일기의 사진들 중 현재 앨범명과 위치가 일치하는 사진 찾기
+            // 1. 최신 일기의 사진들 중 현재 앨범명과 위치가 일치하는 사진 찾기 (새로운 로직)
             if (latestDiary.getDiaryPhotos() != null && !latestDiary.getDiaryPhotos().isEmpty()) {
                 Optional<DiaryPhoto> albumSpecificPhotoOpt = latestDiary.getDiaryPhotos().stream()
                         .filter(dp -> StringUtils.hasText(dp.getPhotoUrl()) &&
                                 album.getName().equals(determineAlbumName(dp.getCountryName(), dp.getAdminAreaLevel1(), dp.getLocality())))
-                        .min(Comparator.comparingInt(dp -> dp.getSequence() != null ? dp.getSequence() : Integer.MAX_VALUE));
+                        .min(Comparator.comparingInt(dp -> dp.getSequence() != null ? dp.getSequence() : Integer.MAX_VALUE)); // sequence 오름차순 (낮은 순)
 
                 if (albumSpecificPhotoOpt.isPresent()) {
                     newCoverImageUrl = albumSpecificPhotoOpt.get().getPhotoUrl();
@@ -241,24 +240,32 @@ public class AlbumService {
                 }
             }
 
-            if (!StringUtils.hasText(newCoverImageUrl)) {
-                log.info("앨범 ID {} - 유효한 새 커버 이미지 URL을 찾지 못함. 기존 커버 유지 정책 적용됨.", album.getId());
-            } else if (album.getCoverImageUrl() == null || !newCoverImageUrl.equals(album.getCoverImageUrl())) {
-                log.info("앨범 ID {} - 커버 이미지 변경 시도: 기존 '{}' -> 새 '{}'", album.getId(), album.getCoverImageUrl(), newCoverImageUrl);
-                album.setCoverImageUrl(newCoverImageUrl);
-                try {
-                    albumRepository.save(album);
-                    log.info("앨범 ID {} ('{}') 커버 이미지 업데이트 DB 저장 완료. 새 URL: {}", album.getId(), album.getName(), newCoverImageUrl);
-                } catch (Exception e) {
-                    log.error("앨범 ID {} ('{}') 커버 이미지 DB 저장 중 오류 발생", album.getId(), album.getName(), e);
-                    throw new RuntimeException("앨범 커버 이미지 저장 중 오류", e);
+            // newCoverImageUrl 결정 후 업데이트 로직
+            if (StringUtils.hasText(newCoverImageUrl)) {
+                if (album.getCoverImageUrl() == null || !newCoverImageUrl.equals(album.getCoverImageUrl())) {
+                    log.info("앨범 ID {} - 커버 이미지 변경 시도: 기존 '{}' -> 새 '{}'", album.getId(), album.getCoverImageUrl(), newCoverImageUrl);
+                    album.setCoverImageUrl(newCoverImageUrl);
+                    try {
+                        albumRepository.save(album);
+                        log.info("앨범 ID {} ('{}') 커버 이미지 업데이트 DB 저장 완료. 새 URL: {}", album.getId(), album.getName(), newCoverImageUrl);
+                    } catch (Exception e) {
+                        log.error("앨범 ID {} ('{}') 커버 이미지 DB 저장 중 오류 발생", album.getId(), album.getName(), e);
+                        throw new RuntimeException("앨범 커버 이미지 저장 중 오류", e);
+                    }
+                } else {
+                    log.debug("앨범 ID {} - 커버 이미지가 이미 최신 ('{}'). 변경 없음.", album.getId(), newCoverImageUrl);
                 }
             } else {
-                log.debug("앨범 ID {} - 커버 이미지가 이미 최신 ('{}'). 변경 없음.", album.getId(), newCoverImageUrl);
+                // 유효한 새 커버 이미지를 찾지 못한 경우 (최신 일기에 사진이 아예 없거나, 대표 사진도 없는 경우)
+                // 이전 요청: "기존 커버 이미지를 유지하고 로그는 불필요"
+                // 단, 만약 이전에 커버가 있었는데 이제는 아예 설정할 사진이 없다면 null로 만들어야 할 수도 있음.
+                // 여기서는 "찾지 못하면 기존 커버 유지" 정책을 따르므로, 아무 작업도 하지 않습니다.
+                // (단, 앨범에 활성 일기가 아예 없는 경우는 아래 else 블록에서 처리)
+                log.info("앨범 ID {} - 유효한 새 커버 이미지 URL을 찾지 못함. 기존 커버 유지.", album.getId());
             }
         } else { // 앨범에 활성 일기가 하나도 없는 경우
             log.info("앨범 ID {} ('{}')에 활성 일기가 없어 커버 이미지를 null로 설정 시도.", album.getId(), album.getName());
-            if (album.getCoverImageUrl() != null) {
+            if (album.getCoverImageUrl() != null) { // 기존 커버 이미지가 있었다면 null로 업데이트
                 album.setCoverImageUrl(null);
                 try {
                     albumRepository.save(album);
@@ -273,6 +280,7 @@ public class AlbumService {
         }
         log.info("앨범 ID {} ('{}')의 커버 이미지 업데이트 로직 종료.", album.getId(), album.getName());
     }
+
 
 
     @Transactional

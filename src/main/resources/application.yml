@@ -112,6 +112,8 @@ logging:
     root: INFO
     org.springframework.security: WARN
     c.a.d.g.s.jwt: WARN
+    c.a.d.g.s.jwt.JwtAuthenticationFilter: WARN
+    c.a.diarypic.terms.service.TermsService: WARN
     org.hibernate.SQL: WARN
     org.hibernate.type.descriptor.sql: WARN
     # c.a.diarypic: WARN

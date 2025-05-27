@@ -29,4 +29,16 @@ public class AsyncConfig {
         return executor;
     }
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AsyncConfig.class);
+
+    @Bean(name = "diaryAiTaskExecutor")
+    public Executor diaryAiTaskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2); // AI 작업은 CPU를 사용할 수 있으므로 코어 수에 맞추거나 약간 적게
+        executor.setMaxPoolSize(5);  // 너무 많은 동시 AI 요청 방지
+        executor.setQueueCapacity(20);
+        executor.setThreadNamePrefix("DiaryAI-");
+        executor.initialize();
+        log.info("Custom ThreadPoolTaskExecutor 'diaryAiTaskExecutor' initialized.");
+        return executor;
+    }
 }

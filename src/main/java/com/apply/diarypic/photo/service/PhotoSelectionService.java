@@ -14,6 +14,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Collections; // Collections 임포트 (만약 uploadPhotosWithMetadata에서 사용한다면)
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -24,15 +25,14 @@ public class PhotoSelectionService {
 
     private final PhotoRepository photoRepository;
     private final S3Uploader s3Uploader;
-    // private final GeocodingService geocodingService; // 주석 처리 또는 삭제
-
-    // Presigned URL 관련 만료 시간 필드 제거
 
     @Transactional(readOnly = true)
     public List<PhotoResponse> getTemporaryPhotos(Long userId) {
         List<DiaryPhoto> tempPhotos = photoRepository.findByDiaryIsNullAndUserId(userId);
         return tempPhotos.stream()
-                .map(PhotoResponse::from) // Public URL을 사용하는 from 메소드 호출
+                .sorted(Comparator.comparing(DiaryPhoto::getShootingDateTime, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(DiaryPhoto::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())))
+                .map(PhotoResponse::from)
                 .collect(Collectors.toList());
     }
 
@@ -74,14 +74,12 @@ public class PhotoSelectionService {
             for (DiaryPhoto photo : finalPhotos) {
                 if (photo.getId().equals(photoId)) {
                     photo.setSequence(i + 1);
-                    // --- Geocoding 로직 제거 ---
-                    // 이 단계에서는 DiaryPhoto에 이미 주소 정보가 있다고 가정
                     break;
                 }
             }
         }
 
-        photoRepository.saveAll(finalPhotos); // sequence 변경 사항 저장
+        photoRepository.saveAll(finalPhotos);
 
         for (DiaryPhoto photoToDelete : photosToDelete) {
             try {

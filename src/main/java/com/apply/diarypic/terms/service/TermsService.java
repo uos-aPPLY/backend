@@ -7,6 +7,7 @@ import com.apply.diarypic.terms.entity.TermsType;
 import com.apply.diarypic.terms.entity.UserTermsAgreement;
 import com.apply.diarypic.terms.repository.TermsRepository;
 import com.apply.diarypic.terms.repository.UserTermsAgreementRepository;
+import com.apply.diarypic.user.dto.UserNicknameResponseDto;
 import com.apply.diarypic.user.entity.User;
 import com.apply.diarypic.user.repository.UserRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -88,20 +89,29 @@ public class TermsService {
     }
 
     @Transactional
-    public void updateUserAgreements(Long userId, UserAgreementRequest request) {
+    public UserNicknameResponseDto updateUserAgreements(Long userId, UserAgreementRequest request) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new EntityNotFoundException("User not found with id: " + userId));
+                .orElseThrow(() -> {
+                    log.error("[TermsService] updateUserAgreements - User not found with id: {}", userId);
+                    return new EntityNotFoundException("User not found with id: " + userId);
+                });
+        log.info("[TermsService] updateUserAgreements - 사용자 조회 완료: userId={}", user.getId());
 
         for (UserAgreementRequest.AgreementItem item : request.getAgreements()) {
             Terms terms = termsRepository.findById(item.getTermsId())
-                    .orElseThrow(() -> new EntityNotFoundException("Terms not found with id: " + item.getTermsId()));
+                    .orElseThrow(() -> {
+                        log.error("[TermsService] updateUserAgreements - Terms not found with id: {}", item.getTermsId());
+                        return new EntityNotFoundException("Terms not found with id: " + item.getTermsId());
+                    });
 
-            // 최신 버전 약관인지 다시 한번 확인
             Terms latestVersionOfThisType = termsRepository.findFirstByTermsTypeOrderByVersionDesc(terms.getTermsType())
-                    .orElseThrow(() -> new EntityNotFoundException("Cannot find latest version for terms type: " + terms.getTermsType()));
+                    .orElseThrow(() -> {
+                        log.error("[TermsService] updateUserAgreements - Cannot find latest version for terms type: {}", terms.getTermsType());
+                        return new EntityNotFoundException("Cannot find latest version for terms type: " + terms.getTermsType());
+                    });
 
             if (!terms.getId().equals(latestVersionOfThisType.getId())) {
-                log.warn("User {} attempted to agree to an outdated terms (ID: {}, Version: {}). Latest is Version: {}.",
+                log.warn("[TermsService] updateUserAgreements - User {} attempted to agree to an outdated terms (ID: {}, Version: {}). Latest is Version: {}.",
                         userId, terms.getId(), terms.getVersion(), latestVersionOfThisType.getVersion());
                 throw new IllegalArgumentException("동의하려는 약관 '" + terms.getTitle() + "'이(가) 최신 버전(" + latestVersionOfThisType.getVersion() + ")이 아닙니다. 현재 버전: " + terms.getVersion());
             }
@@ -113,13 +123,16 @@ public class TermsService {
                             .build());
 
             agreement.setAgreed(item.getAgreed());
-            agreement.setAgreedAt(LocalDateTime.now()); // 동의/철회 시각 업데이트
+            agreement.setAgreedAt(LocalDateTime.now());
             userTermsAgreementRepository.save(agreement);
 
-            log.info("User {} {} terms '{}' (ID: {}, type: {}, version {}) at {}",
+            log.info("[TermsService] updateUserAgreements - User {} {} terms '{}' (ID: {}, type: {}, version {}) at {}",
                     userId, item.getAgreed() ? "agreed to" : "revoked agreement for",
                     terms.getTitle(), terms.getId(), terms.getTermsType().name(), terms.getVersion(), agreement.getAgreedAt());
         }
+        log.info("[TermsService] updateUserAgreements - 사용자 약관 동의 처리 완료. userId: {}", userId);
+
+        return new UserNicknameResponseDto(user.getNickname());
     }
 
     public boolean hasAgreedToAllRequiredTerms(Long userId) {

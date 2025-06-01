@@ -6,6 +6,7 @@ import com.apply.diarypic.terms.dto.TermsDto;
 import com.apply.diarypic.terms.dto.UserAgreementRequest;
 import com.apply.diarypic.terms.entity.TermsType;
 import com.apply.diarypic.terms.service.TermsService;
+import com.apply.diarypic.user.dto.UserNicknameResponseDto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -31,12 +32,12 @@ public class TermsController {
         return ResponseEntity.ok(termsList);
     }
 
-    @Operation(summary = "사용자 약관 동의 상태 제출", description = "사용자가 동의/비동의한 약관 목록을 받아 처리합니다.")
+    @Operation(summary = "사용자 약관 동의 상태 제출", description = "사용자가 동의/비동의한 약관 목록을 받아 처리하며, 사용자의 현재 닉네임 상태를 반환합니다.")
     @PostMapping("/agreements")
-    public ResponseEntity<Void> updateUserAgreements(@CurrentUser UserPrincipal userPrincipal,
-                                                     @Valid @RequestBody UserAgreementRequest request) {
-        termsService.updateUserAgreements(userPrincipal.getUserId(), request);
-        return ResponseEntity.ok().build();
+    public ResponseEntity<UserNicknameResponseDto> updateUserAgreements(@CurrentUser UserPrincipal userPrincipal,
+                                                                        @Valid @RequestBody UserAgreementRequest request) {
+        UserNicknameResponseDto responseDto = termsService.updateUserAgreements(userPrincipal.getUserId(), request);
+        return ResponseEntity.ok(responseDto);
     }
 
     @Operation(summary = "사용자가 모든 필수 약관에 동의했는지 확인")

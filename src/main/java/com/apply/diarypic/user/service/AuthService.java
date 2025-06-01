@@ -31,11 +31,13 @@ public class AuthService {
             case "kakao" -> socialUserInfoService.getKakaoUserInfo(req.accessToken());
             case "google" -> socialUserInfoService.getGoogleUserInfo(req.accessToken());
             case "naver" -> socialUserInfoService.getNaverUserInfo(req.accessToken());
+            case "apple" -> socialUserInfoService.getAppleUserInfo(req.accessToken());
             default -> throw new IllegalArgumentException("지원하지 않는 provider: " + req.provider());
         };
 
         String snsUserId = null;
         String socialNickname = null;
+        String emailFromApple = null;
 
         switch (req.provider().toLowerCase()) {
             case "kakao":
@@ -57,6 +59,13 @@ public class AuthService {
                 socialNickname = (String) userInfoMap.get("nickname");
                 if (socialNickname == null || socialNickname.isBlank()) {
                     socialNickname = (String) userInfoMap.get("name");
+                }
+                break;
+            case "apple":
+                snsUserId = (String) userInfoMap.get("sub");
+                emailFromApple = (String) userInfoMap.get("email");
+                if (emailFromApple != null && !emailFromApple.isBlank()) {
+                    socialNickname = emailFromApple.split("@")[0];
                 }
                 break;
             default:
@@ -81,7 +90,7 @@ public class AuthService {
                     User newUser = User.builder()
                             .snsProvider(finalProvider)
                             .snsUserId(finalSnsUserId)
-                            .nickname(finalSocialNicknameForNewUser)
+                            .nickname(null)
                             .writingStylePrompt("기본 말투입니다.")
                             .writingStyleNumber(1)
                             .alarmEnabled(false)

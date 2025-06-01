@@ -4,10 +4,11 @@ import lombok.Getter;
 
 @Getter
 public enum TermsType {
-    AGE_CONFIRMATION("만 14세 이상입니다.", 1), // [필수] 만 14세 이상입니다.
-    SERVICE_TERMS("서비스 이용약관", 2),        // [필수] 서비스 이용약관
-    PRIVACY_POLICY("개인정보 처리방침", 3),    // [필수] 개인정보 처리방침
-    MARKETING_OPT_IN("마케팅 정보 수신 동의", 4); // [선택] 마케팅 정보 수신 동의
+    AGE_CONFIRMATION("만 14세 이상 확인", 1),
+    SERVICE_TERMS("서비스 이용약관", 2),
+    PRIVACY_POLICY("개인정보 처리방침", 3),
+    PERSONAL_INFO_COLLECTION_AGREEMENT("개인정보 수집-이용 동의", 4),
+    MARKETING_OPT_IN("마케팅 정보 수신 동의", 5);
 
     private final String description;
     private final int displayOrder;
@@ -16,5 +17,4 @@ public enum TermsType {
         this.description = description;
         this.displayOrder = displayOrder;
     }
-
 }

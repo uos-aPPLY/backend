@@ -43,6 +43,7 @@ public class SecurityConfig {
                                 "/api/auth/login",
                                 "/api/auth/refresh")
                         .permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/terms/*/content").permitAll()
                         /* 나머지는 인증 */
                         .anyRequest().authenticated()
                 )

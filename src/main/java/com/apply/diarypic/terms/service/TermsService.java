@@ -3,6 +3,7 @@ package com.apply.diarypic.terms.service;
 import com.apply.diarypic.terms.dto.TermsDto;
 import com.apply.diarypic.terms.dto.UserAgreementRequest;
 import com.apply.diarypic.terms.entity.Terms;
+import com.apply.diarypic.terms.entity.TermsType;
 import com.apply.diarypic.terms.entity.UserTermsAgreement;
 import com.apply.diarypic.terms.repository.TermsRepository;
 import com.apply.diarypic.terms.repository.UserTermsAgreementRepository;
@@ -75,10 +76,10 @@ public class TermsService {
                             .version(term.getVersion())
                             .required(term.isRequired())
                             .effectiveDate(term.getEffectiveDate())
-                            .agreed(agreedTermsMap.getOrDefault(term.getId(), false)) // 동의 기록 없으면 false
+                            .agreed(agreedTermsMap.getOrDefault(term.getId(), false))
                             .build();
                 })
-                .filter(Objects::nonNull) // null DTO 제거
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
 
         log.info("[TermsService] TermsDto 리스트 변환 완료. 결과 개수: {}", termsDtoList.size());
@@ -102,7 +103,6 @@ public class TermsService {
             if (!terms.getId().equals(latestVersionOfThisType.getId())) {
                 log.warn("User {} attempted to agree to an outdated terms (ID: {}, Version: {}). Latest is Version: {}.",
                         userId, terms.getId(), terms.getVersion(), latestVersionOfThisType.getVersion());
-                // 클라이언트가 보낸 termsId에 해당하는 약관이 최신 버전이 아니면 예외를 던짐
                 throw new IllegalArgumentException("동의하려는 약관 '" + terms.getTitle() + "'이(가) 최신 버전(" + latestVersionOfThisType.getVersion() + ")이 아닙니다. 현재 버전: " + terms.getVersion());
             }
 
@@ -126,21 +126,18 @@ public class TermsService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found with id: " + userId));
 
-        // DB에서 '현재 활성화된 & 필수인' 최신 버전 약관들만 가져옴
         List<Terms> latestRequiredTerms = termsRepository.findLatestActiveTerms().stream()
                 .filter(Terms::isRequired)
                 .toList();
 
         if (latestRequiredTerms.isEmpty()) {
             log.info("[TermsService] 필수 약관이 설정되어 있지 않습니다. userId: {}", userId);
-            return true; // 필수 약관이 없으면 항상 true
+            return true;
         }
 
-        // 해당 사용자가 '동의(agreed=true)'한 모든 약관 동의 기록을 가져옴
         List<UserTermsAgreement> agreedUserAgreements = userTermsAgreementRepository.findByUserAndAgreedTrue(user);
 
         for (Terms requiredTerm : latestRequiredTerms) {
-            // 사용자가 동의한 기록 중에서 현재 필수 약관(ID 기준)과 일치하는 것이 있는지 확인
             boolean hasAgreed = agreedUserAgreements.stream()
                     .anyMatch(agreement -> agreement.getTerms().getId().equals(requiredTerm.getId()));
 
@@ -153,5 +150,27 @@ public class TermsService {
 
         log.info("[TermsService] User {} has agreed to all required terms.", userId);
         return true;
+    }
+
+    /**
+     * 특정 타입의 최신 유효 약관 내용을 조회합니다. (HTML String 반환)
+     *
+     * @param termsType 조회할 약관의 타입
+     * @return 해당 약관 타입의 최신 버전 내용 (HTML)
+     * @throws EntityNotFoundException 해당 타입의 약관을 찾을 수 없는 경우
+     */
+    public String getLatestActiveTermsContentByType(TermsType termsType) {
+        log.info("[TermsService] getLatestActiveTermsContentByType 시작 - termsType: {}", termsType.name());
+
+        Terms latestTerm = termsRepository.findFirstByTermsTypeOrderByVersionDesc(termsType)
+                .filter(term -> term.getEffectiveDate() != null && term.getEffectiveDate().isBefore(LocalDateTime.now().plusSeconds(1)))
+                .orElseThrow(() -> {
+                    log.warn("[TermsService] 유효한 최신 약관을 찾을 수 없습니다. termsType: {}", termsType.name());
+                    return new EntityNotFoundException("현재 유효한 " + termsType.getDescription() + " 약관을 찾을 수 없습니다.");
+                });
+
+        log.info("[TermsService] 최신 약관 조회 완료: title='{}', version={}, termsType={}", latestTerm.getTitle(), latestTerm.getVersion(), termsType.name());
+        log.info("[TermsService] getLatestActiveTermsContentByType 종료 - termsType: {}", termsType.name());
+        return latestTerm.getContent();
     }
 }

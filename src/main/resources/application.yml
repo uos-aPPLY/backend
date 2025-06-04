@@ -4,8 +4,7 @@ spring:
   jackson:
     serialization:
       fail-on-empty-beans: false
-
-  # 공통 Datasource 설정
+    time-zone: Asia/Seoul
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: ${DB_USERNAME}
@@ -94,6 +93,7 @@ google:
   maps:
     api:
       key: ${GOOGLE_MAPS_API_KEY}
+
 
 springdoc:
   override-with-generic-response: false

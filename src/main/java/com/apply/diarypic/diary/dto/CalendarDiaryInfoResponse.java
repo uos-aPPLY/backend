@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Getter;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Getter
 @Builder
@@ -16,6 +17,8 @@ public class CalendarDiaryInfoResponse {
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
     private LocalDate diaryDate;
     private String representativePhotoUrl;
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime createdAt;
 
     public static CalendarDiaryInfoResponse from(Diary diary) {
         if (diary == null) {
@@ -27,6 +30,7 @@ public class CalendarDiaryInfoResponse {
                 .status(diary.getStatus())
                 .diaryDate(diary.getDiaryDate())
                 .representativePhotoUrl(diary.getRepresentativePhotoUrl())
+                .createdAt(diary.getCreatedAt())
                 .build();
     }
 }

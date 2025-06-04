@@ -17,6 +17,7 @@ public class CalendarDiaryInfoResponse {
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
     private LocalDate diaryDate;
     private String representativePhotoUrl;
+    private String content;
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createdAt;
 
@@ -30,6 +31,7 @@ public class CalendarDiaryInfoResponse {
                 .status(diary.getStatus())
                 .diaryDate(diary.getDiaryDate())
                 .representativePhotoUrl(diary.getRepresentativePhotoUrl())
+                .content(diary.getContent())
                 .createdAt(diary.getCreatedAt())
                 .build();
     }

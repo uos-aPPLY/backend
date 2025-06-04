@@ -65,13 +65,13 @@ public interface DiaryRepository extends JpaRepository<Diary, Long> {
 
     /**
      * 특정 사용자의 특정 연도와 월에 작성된 모든 활성(삭제되지 않은) 일기를 조회합니다.
-     * 날짜 오름차순으로 정렬합니다 (캘린더 표시에 적합).
+     * 날짜 내림차순으로 정렬합니다 (최신순).
      */
     @Query("SELECT d FROM Diary d WHERE d.user = :user " +
             "AND d.deletedAt IS NULL " +
             "AND FUNCTION('YEAR', d.diaryDate) = :year " +
             "AND FUNCTION('MONTH', d.diaryDate) = :month " +
-            "ORDER BY d.diaryDate ASC")
+            "ORDER BY d.diaryDate DESC")
     List<Diary> findAllByUserAndYearAndMonthAndDeletedAtIsNullOrderByDiaryDateAsc(
             @Param("user") User user,
             @Param("year") int year,

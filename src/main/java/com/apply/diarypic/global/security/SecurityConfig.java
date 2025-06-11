@@ -35,6 +35,7 @@ public class SecurityConfig {
                         /* 인증이 필요 없는 엔드포인트 */
                         .requestMatchers(
                                 "/health",
+                                "/maintenance-status",
                                 "/swagger-ui.html",
                                 "/swagger-ui/**",
                                 "/v3/api-docs",

@@ -12,8 +12,8 @@ public class MaintenanceController {
     @GetMapping("/maintenance-status")
     public Map<String, Object> getMaintenanceStatus() {
         Map<String, Object> response = new HashMap<>();
-        response.put("isUnderMaintenance", true);
-        response.put("message", "서비스 점검 중입니다.");
+        response.put("isUnderMaintenance", false);
+        response.put("message", "서비스가 정상적으로 운영 중입니다.");
 
         return response;
     }

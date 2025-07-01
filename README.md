@@ -1,2 +1,1 @@
 https://diarypic.com/
-d

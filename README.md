@@ -1,3 +1,3 @@
- https://diarypic.com/
+https://diarypic.com/
  
  
